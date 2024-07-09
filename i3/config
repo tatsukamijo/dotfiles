@@ -217,4 +217,4 @@ bindsym $mod+x exec i3lock -c 000000
 bindsym button2 kill
 
 # screenshot
-bindsym $mod+Shift+s exec /home/tatsuya/shell_scripts/screenshot.sh
+bindsym $mod+Shift+s exec ~/.config/i3/screenshot.sh
