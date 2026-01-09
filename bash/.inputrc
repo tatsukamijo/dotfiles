@@ -1,0 +1,9 @@
+# History search with arrow keys
+"\e[A": history-search-backward
+"\e[B": history-search-forward
+
+# Word navigation with Alt+Arrow
+"\e\e[C": forward-word
+"\e\e[D": backward-word
+"\e[1;3C": forward-word
+"\e[1;3D": backward-word
