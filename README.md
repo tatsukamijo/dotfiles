@@ -17,7 +17,7 @@ source ~/.bashrc  # or restart shell
 ```bash
 pixi global install \
   stow \
-  tmux \
+  tmux=3.4 \
   git \
   curl \
   jq \
@@ -68,6 +68,8 @@ nvim
 ```
 
 On first launch, plugins will be installed via lazy.nvim and LSP servers via Mason. ☕ Grab a coffee!
+
+> 📝 Neovim configuration is managed separately. For details, keybindings, and troubleshooting, see: [tatsukamijo/tatsukamijo.nvim](https://github.com/tatsukamijo/tatsukamijo.nvim)
 
 ### 4. tmux Plugin Manager
 
