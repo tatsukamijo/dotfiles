@@ -51,6 +51,10 @@ git submodule update --init --recursive
 ### 2. Symlink configurations with GNU stow
 
 ```bash
+# Backup existing .bashrc if it exists
+[ -f ~/.bashrc ] && mv ~/.bashrc ~/.bashrc.bak
+
+# Stow all configurations
 stow -v */
 ```
 
