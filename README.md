@@ -24,6 +24,7 @@ pixi global install \
   bc \
   xclip \
   nvim \
+  nodejs \
   stylua \
   black \
   isort \
