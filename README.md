@@ -51,8 +51,8 @@ git submodule update --init --recursive
 ### 2. Symlink configurations with GNU stow
 
 ```bash
-# Backup existing .bashrc if it exists
-[ -f ~/.bashrc ] && mv ~/.bashrc ~/.bashrc.bak
+# Backup existing config files
+for f in .bashrc .inputrc .tmux.conf; do [ -f ~/$f ] && mv ~/$f ~/$f.bak; done
 
 # Stow all configurations
 stow -v */

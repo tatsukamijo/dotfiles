@@ -113,6 +113,13 @@ extract() {
   esac
 }
 
+# OSC 52 clipboard copy for tmux over SSH (used by tmux.conf)
+yank() {
+  local data=$(cat)
+  local tty=$(tmux display-message -p '#{pane_tty}')
+  printf '\033Ptmux;\033\033]52;c;%s\007\033\\' "$(echo -n "$data" | base64 -w 0)" > "$tty"
+}
+
 # Open files in parent nvim from :terminal
 if [[ -n "$NVIM" ]]; then
   alias nvim='nvim --server "$NVIM" --remote'

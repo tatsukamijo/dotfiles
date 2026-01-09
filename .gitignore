@@ -12,7 +12,5 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Local overrides (files only, not .local directory)
+# Local overrides
 *.local
-!.local/
-!**/.local/

@@ -1,6 +1,0 @@
-#!/bin/bash
-# OSC 52 clipboard copy for tmux over SSH
-# Sends selected text to local clipboard via terminal escape sequence
-data=$(cat)
-tty=$(tmux display-message -p '#{pane_tty}')
-printf '\033Ptmux;\033\033]52;c;%s\007\033\\' "$(echo -n "$data" | base64 -w 0)" > "$tty"
