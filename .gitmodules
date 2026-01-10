@@ -1,3 +1,6 @@
-[submodule "nvim/.config/nvim"]
-	path = nvim/.config/nvim
+[submodule ".submodules/nvim"]
+	path = .submodules/nvim
 	url = git@github.com:tatsukamijo/tatsukamijo.nvim.git
+[submodule ".submodules/virtual_desktop_docker"]
+	path = .submodules/virtual_desktop_docker
+	url = git@github.com:tatsukamijo/virtual_desktop_docker.git

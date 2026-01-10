@@ -54,6 +54,7 @@ git submodule update --init --recursive
 # Backup existing config files
 for f in .bashrc .inputrc .tmux.conf; do [ -f ~/$f ] && mv ~/$f ~/$f.bak; done
 [ -d ~/.config/nvim ] && mv ~/.config/nvim ~/.config/nvim.bak
+[ -f ~/.local/bin/rdp-ssh ] && mv ~/.local/bin/rdp-ssh ~/.local/bin/rdp-ssh.bak
 
 # Stow all configurations
 stow -v */
