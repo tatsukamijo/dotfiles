@@ -120,6 +120,80 @@ yank() {
   printf '\033Ptmux;\033\033]52;c;%s\007\033\\' "$(echo -n "$data" | base64 -w 0)" > "$tty"
 }
 
+# Virtual Desktop Docker (vdd) - Smart wrapper for rdp-ssh
+VDD_DEFAULT_SESSION="desktop-kamijo"
+VDD_BASE_PORT=6090
+
+# Check if a session is already running on the remote host
+_vdd_is_running() {
+  local host="$1"
+  local session="$2"
+  rdp-ssh -a "$host" list 2>/dev/null | grep -q "^$session"
+}
+
+# Check if a local port is already in use
+_vdd_port_in_use() {
+  local port="$1"
+  lsof -i ":$port" -sTCP:LISTEN -t >/dev/null 2>&1
+}
+
+# Find next available port starting from base port
+_vdd_find_free_port() {
+  local base_port="${1:-$VDD_BASE_PORT}"
+  local port=$base_port
+  while _vdd_port_in_use "$port"; do
+    ((port++))
+  done
+  echo "$port"
+}
+
+# Smart wrapper for rdp-ssh that auto-detects whether to start or connect
+# Usage:
+#   vdd <ssh-host> [session-name] [extra-rdp-ssh-options...]
+#   vdd -n <ssh-host> [session-name]  # no port forwarding (for 2nd+ terminal)
+vdd() {
+  local no_forward=false
+  local host=""
+  local session=""
+  local extra_opts=""
+
+  # Parse -n flag for no port forwarding
+  if [[ "$1" == "-n" ]]; then
+    no_forward=true
+    shift
+  fi
+
+  host="${1:?SSH host required}"
+  session="${2:-$VDD_DEFAULT_SESSION}"
+  shift 2 2>/dev/null || shift 1
+  extra_opts="$@"
+
+  # Auto-detect: connect if running, start if not
+  local action=""
+  if _vdd_is_running "$host" "$session"; then
+    action="connect"
+  else
+    action="start"
+  fi
+
+  # Handle port forwarding
+  local port_opts=""
+  if $no_forward; then
+    echo "→ ${action}ing session '$session' on $host (no port forwarding)..."
+  else
+    # Check if default port is in use, find alternative if needed
+    if _vdd_port_in_use "$VDD_BASE_PORT"; then
+      local free_port=$(_vdd_find_free_port)
+      echo "→ ${action}ing session '$session' on $host (port $VDD_BASE_PORT in use, using $free_port)..."
+      port_opts="-p $free_port"
+    else
+      echo "→ ${action}ing session '$session' on $host..."
+    fi
+  fi
+
+  rdp-ssh -n "$session" -a "$host" $port_opts $extra_opts "$action"
+}
+
 # Open files in parent nvim from :terminal
 if [[ -n "$NVIM" ]]; then
   alias nvim='nvim --server "$NVIM" --remote'
