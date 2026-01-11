@@ -108,7 +108,7 @@ Commit types:
 - feat: new behavior or capability
 - fix: incorrect or broken behavior
 - perf: performance improvement
-- style: formatting, whitespace, indentation only
+- style: formatting, whitespace, indentation or visual-only UI changes with no behavior or UX impact
 - refactor: behavior-preserving internal change
 - chore: tooling, config, dependencies, CI, scripts, non-product code
 - docs: documentation only
@@ -135,7 +135,8 @@ Rules:
 Examples (for style and abstraction only, do not copy content):
 - perf(controller): reduce control loop latency
 - refactor(policy): clarify action timing semantics
-- fix: prevent crash on empty input"
+- fix: prevent crash on empty input
+- style(nvim): adjust statusline color scheme"
 
     if [[ -n "$intent" ]]; then
       prompt="$prompt
