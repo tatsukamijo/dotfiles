@@ -130,7 +130,12 @@ Rules:
 - Scope is optional; omit it if it does not clearly add information
 - If present, scope must be conceptual, not a filename or directory
 - Use abstraction level appropriate for git history
-- If unsure, choose the most user-impacting type"
+- If unsure, choose the most user-impacting type
+
+Examples (for style and abstraction only, do not copy content):
+- perf(controller): reduce control loop latency
+- refactor(policy): clarify action timing semantics
+- fix: prevent crash on empty input"
 
     if [[ -n "$intent" ]]; then
       prompt="$prompt
