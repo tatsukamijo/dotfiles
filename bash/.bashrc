@@ -71,33 +71,105 @@ function promps {
 }
 promps
 
-# Commit message generation with Claude API
 gc() {
   local diff=$(git diff --cached)
   if [[ -z "$diff" ]]; then
-    echo "Nothing staged"; return 1
+    echo "Nothing staged"
+    return 1
   fi
+
+  # Limit diff but keep motivation clues
+  local diff_excerpt=$(
+    echo "$diff" | awk '
+      NR<=200 {print}
+      {buf[NR%200]=$0}
+      END{
+        if (NR>400) {
+          print "\n--- snip ---\n"
+          for (i=NR-199;i<=NR;i++) print buf[i%200]
+        }
+      }'
+  )
+
+  generate_msg() {
+    local intent="$1"
+
+    local prompt="You are generating a git commit message.
+
+First infer the primary motivation behind this change (problem being addressed, improvement, or reason).
+Then generate a 1-line conventional commit message that reflects BOTH what changed and why.
+
+Commit types:
+- feat: new behavior or capability
+- fix: incorrect or broken behavior
+- perf: performance improvement
+- refactor: behavior-preserving internal change
+- chore: tooling, formatting, non-product code
+- docs: documentation only
+- test: tests only
+
+Rules:
+- Format: type(scope): description
+- Choose type based on intent, not diff size
+- Describe the problem being addressed or benefit achieved
+- Prefer behavioral or architectural meaning over raw diff summary
+- Scope should be conceptual, not a filename or directory (omit if unclear)
+- Use abstraction level appropriate for git history
+- 1 line only
+- No markdown, no quotes, no backticks, no explanation"
+
+    if [[ -n "$intent" ]]; then
+      prompt="$prompt
+
+User-provided intent:
+$intent"
+    fi
+
+    curl -s https://api.anthropic.com/v1/messages \
+      -H "x-api-key: $ANTHROPIC_API_KEY" \
+      -H "anthropic-version: 2023-06-01" \
+      -H "content-type: application/json" \
+      -d "$(jq -n \
+        --arg prompt "$prompt" \
+        --arg diff "$diff_excerpt" \
+        '{
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 80,
+          messages: [
+            {role: "user", content: ($prompt + "\n\nDiff:\n" + $diff)}
+          ]
+        }')" \
+      | jq -r '.content[0].text // .error.message' \
+      | sed 's/^```//;s/```$//;s/`//g' \
+      | head -1
+  }
+
   local start=$(date +%s.%N)
-  local prompt="Conventional commit for this diff. Format: type(scope): description. Be specific about what changed. 1 line only. No markdown, no quotes, no backticks, no explanation. Just the raw commit message."
-  local msg=$(curl -s https://api.anthropic.com/v1/messages \
-    -H "x-api-key: $ANTHROPIC_API_KEY" \
-    -H "anthropic-version: 2023-06-01" \
-    -H "content-type: application/json" \
-    -d "$(jq -n --arg prompt "$prompt" --arg diff "$(echo "$diff" | head -300)" '{
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 100,
-      messages: [{role: "user", content: ($prompt + "\n\n" + $diff)}]
-    }')" | jq -r '.content[0].text // .error.message' | sed 's/^```//;s/```$//;s/^`//;s/`$//' | head -1)
+  local msg=$(generate_msg "")
   local elapsed=$(echo "$(date +%s.%N) - $start" | bc)
-  echo -e "\033[90m(${elapsed}s)\033[0m"
-  echo -e "\033[38;5;159m$msg\033[0m"
-  read -n1 -p "[Enter/e/n] " k; echo
-  case $k in
-    e) git commit -e -m "$msg" ;;
-    n) ;;
-    *) git commit -m "$msg" ;;
-  esac
+
+  while true; do
+    echo -e "\033[90m(${elapsed}s)\033[0m"
+    echo -e "\033[38;5;159m$msg\033[0m"
+    read -n1 -p "[Enter/e/i/n] " k
+    echo
+
+    case $k in
+      "")  git commit -m "$msg"; break ;;
+      e)   git commit -e -m "$msg"; break ;;
+      n)   break ;;
+      i)
+        read -p "Intent: " intent
+        [[ -z "$intent" ]] && continue
+        start=$(date +%s.%N)
+        msg=$(generate_msg "$intent")
+        elapsed=$(echo "$(date +%s.%N) - $start" | bc)
+        ;;
+    esac
+  done
 }
+
+
 
 # Utility functions
 mkcd() { mkdir -p "$1" && cd "$1"; }
