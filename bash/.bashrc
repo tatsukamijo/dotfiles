@@ -103,10 +103,20 @@ Commit types:
 - feat: new behavior or capability
 - fix: incorrect or broken behavior
 - perf: performance improvement
+- style: formatting, whitespace, indentation
 - refactor: behavior-preserving internal change
-- chore: tooling, formatting, non-product code
+- chore: tooling, non-product code
 - docs: documentation only
 - test: tests only
+
+Type selection guide:
+- feat/fix/perf: observable behavior or performance change
+- refactor: no behavior change, but improves structure or clarity
+- style: purely formatting or whitespace, no semantic meaning
+- chore: tooling, config, dependencies, CI, scripts, non-product code
+- docs/test: documentation or tests only
+
+If multiple apply, choose the most user-impacting one.
 
 Rules:
 - Format: type(scope): description
