@@ -96,37 +96,41 @@ gc() {
 
     local prompt="You are generating a git commit message.
 
-First infer the primary motivation behind this change (problem being addressed, improvement, or reason).
-Then generate a 1-line conventional commit message that reflects BOTH what changed and why.
+Internally infer the primary motivation behind this change (problem, improvement, or reason),
+but DO NOT include that reasoning in the output.
+
+Output ONLY a single conventional commit message line.
+
+Commit format:
+type(scope): description
 
 Commit types:
 - feat: new behavior or capability
 - fix: incorrect or broken behavior
 - perf: performance improvement
-- style: formatting, whitespace, indentation
+- style: formatting, whitespace, indentation only
 - refactor: behavior-preserving internal change
-- chore: tooling, non-product code
+- chore: tooling, config, dependencies, CI, scripts, non-product code
 - docs: documentation only
 - test: tests only
 
 Type selection guide:
 - feat/fix/perf: observable behavior or performance change
-- refactor: no behavior change, but improves structure or clarity
-- style: purely formatting or whitespace, no semantic meaning
-- chore: tooling, config, dependencies, CI, scripts, non-product code
+- refactor: structural or clarity improvement with no behavior change
+- style: purely formatting, no semantic meaning
+- chore: non-product code or tooling
 - docs/test: documentation or tests only
 
-If multiple apply, choose the most user-impacting one.
-
 Rules:
-- Format: type(scope): description
-- Choose type based on intent, not diff size
+- Output exactly ONE line
+- No preface, no explanation, no labels
+- No markdown, no quotes, no backticks
 - Describe the problem being addressed or benefit achieved
-- Prefer behavioral or architectural meaning over raw diff summary
-- Scope should be conceptual, not a filename or directory (omit if unclear)
+- Prefer architectural or behavioral meaning over raw diff summary
+- Scope is optional; omit it if it does not clearly add information
+- If present, scope must be conceptual, not a filename or directory
 - Use abstraction level appropriate for git history
-- 1 line only
-- No markdown, no quotes, no backticks, no explanation"
+- If unsure, choose the most user-impacting type"
 
     if [[ -n "$intent" ]]; then
       prompt="$prompt
