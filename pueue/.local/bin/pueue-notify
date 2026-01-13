@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+"""
+pueue callback notification script
+Sends email notification when a pueue task completes
+
+Required environment variables (set in ~/.bashrc.local):
+  PUEUE_NOTIFY_EMAIL    - recipient email address
+  SMTP_GMAIL_ADDRESS    - Gmail address for sending
+  SMTP_GMAIL_PASSWORD   - Gmail app password
+
+Optional:
+  PUEUE_NOTIFY_ONLY_FAILURE - set to "true" to only notify on failures
+"""
+
+import html
+import json
+import os
+import re
+import smtplib
+import socket
+import subprocess
+import sys
+from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import formatdate, make_msgid
+from pathlib import Path
+
+THREAD_FILE = Path.home() / ".local" / "share" / "pueue-notify" / "threads.json"
+
+
+def load_bashrc_local():
+    """Load environment variables from ~/.bashrc.local"""
+    bashrc_local = Path.home() / ".bashrc.local"
+    if not bashrc_local.exists():
+        return
+
+    with open(bashrc_local) as f:
+        for line in f:
+            match = re.match(r'^export\s+([A-Z_][A-Z0-9_]*)=["\']?([^"\']*)["\']?', line.strip())
+            if match:
+                key, value = match.groups()
+                if key not in os.environ:
+                    os.environ[key] = value
+
+
+def get_task_info(task_id: str) -> dict:
+    """Get task information using pueue status --json"""
+    try:
+        result = subprocess.run(
+            ["pueue", "status", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        data = json.loads(result.stdout)
+        tasks = data.get("tasks", {})
+        return tasks.get(task_id, {})
+    except Exception as e:
+        print(f"Error getting task info: {e}", file=sys.stderr)
+        return {}
+
+
+def get_task_log(task_id: str, head_lines: int = 10, tail_lines: int = 10) -> str:
+    """Get task output using pueue log, showing first and last N lines"""
+    try:
+        # Get full log
+        result = subprocess.run(
+            ["pueue", "log", "--full", task_id],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        full_output = result.stdout
+        lines = full_output.splitlines()
+
+        total_lines = len(lines)
+        max_shown = head_lines + tail_lines
+
+        if total_lines <= max_shown:
+            return full_output
+
+        # Show first N + ... + last N lines
+        head = lines[:head_lines]
+        tail = lines[-tail_lines:]
+        omitted = total_lines - max_shown
+
+        return "\n".join(head) + f"\n\n... ({omitted} lines omitted) ...\n\n" + "\n".join(tail)
+    except Exception as e:
+        return f"(error getting log: {e})"
+
+
+def load_threads() -> dict:
+    """Load thread Message-IDs from file"""
+    if THREAD_FILE.exists():
+        try:
+            with open(THREAD_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def save_threads(threads: dict):
+    """Save thread Message-IDs to file"""
+    THREAD_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(THREAD_FILE, "w") as f:
+        json.dump(threads, f, indent=2)
+
+
+def get_or_create_thread_id(group: str, gmail_address: str) -> tuple[str, bool]:
+    """Get existing thread Message-ID or create new one. Returns (message_id, is_new)"""
+    threads = load_threads()
+
+    if group in threads:
+        return threads[group], False
+
+    # Create new Message-ID for this group
+    message_id = make_msgid(domain=gmail_address.split("@")[1])
+    threads[group] = message_id
+    save_threads(threads)
+    return message_id, True
+
+
+def format_duration(seconds: float) -> str:
+    """Format duration in human readable format"""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    elif seconds < 3600:
+        mins = int(seconds // 60)
+        secs = seconds % 60
+        return f"{mins}m {secs:.0f}s"
+    else:
+        hours = int(seconds // 3600)
+        mins = int((seconds % 3600) // 60)
+        return f"{hours}h {mins}m"
+
+
+def create_html_email(task_id: str, command: str, path_dir: str, result: str, log_output: str, duration: str, start_time: str, end_time: str) -> str:
+    """Create beautiful HTML email content"""
+    is_success = result == "Success"
+
+    # Colors and icons based on status
+    if is_success:
+        status_emoji = "&#x2705;"  # Green checkmark
+        status_color = "#10B981"  # Green
+        status_bg = "#D1FAE5"
+        status_text = "Success"
+        header_gradient = "linear-gradient(135deg, #10B981 0%, #34D399 100%)"
+    else:
+        status_emoji = "&#x274C;"  # Red X
+        status_color = "#EF4444"  # Red
+        status_bg = "#FEE2E2"
+        status_text = "Failed"
+        header_gradient = "linear-gradient(135deg, #EF4444 0%, #F87171 100%)"
+
+    hostname = socket.gethostname()
+
+    # Escape HTML in user content
+    command_escaped = html.escape(command)
+    path_escaped = html.escape(path_dir)
+    log_escaped = html.escape(log_output)
+    hostname_escaped = html.escape(hostname)
+
+    return f'''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+</head>
+<body style="margin: 0; padding: 20px; background-color: #F3F4F6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+    <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+        <!-- Header -->
+        <div style="background: {header_gradient}; padding: 24px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 8px;">{status_emoji}</div>
+            <h1 style="margin: 0; color: white; font-size: 24px; font-weight: 600;">
+                Task #{task_id} {status_text}
+            </h1>
+        </div>
+
+        <!-- Content -->
+        <div style="padding: 24px;">
+            <!-- Info Cards -->
+            <div style="background: #F9FAFB; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+                <div style="margin-bottom: 12px;">
+                    <div style="color: #6B7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                        &#x1F4BB; Command
+                    </div>
+                    <div style="color: #111827; font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size: 14px; word-break: break-all; background: #E5E7EB; padding: 8px 12px; border-radius: 6px;">
+                        {command_escaped}
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                    <div style="color: #6B7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                        &#x1F5A5; Host
+                    </div>
+                    <div style="color: #374151; font-size: 14px;">
+                        {hostname_escaped}
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                    <div style="color: #6B7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                        &#x1F4C1; Directory
+                    </div>
+                    <div style="color: #374151; font-size: 14px;">
+                        {path_escaped}
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                    <div style="color: #6B7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                        &#x23F1; Duration
+                    </div>
+                    <div style="color: #374151; font-size: 14px;">
+                        {duration}
+                    </div>
+                </div>
+
+                <div>
+                    <div style="color: #6B7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                        &#x1F552; Time
+                    </div>
+                    <div style="color: #374151; font-size: 14px;">
+                        {start_time} &#x2192; {end_time}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Output -->
+            <div style="background: #1F2937; border-radius: 12px; padding: 16px; overflow: hidden;">
+                <div style="color: #9CA3AF; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                    &#x1F4DC; Output Log
+                </div>
+                <pre style="margin: 0; color: #E5E7EB; font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; line-height: 1.5;">{log_escaped}</pre>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="background: #F9FAFB; padding: 16px; text-align: center; border-top: 1px solid #E5E7EB;">
+            <div style="color: #9CA3AF; font-size: 12px;">
+                &#x1F680; Powered by <strong>pueue-notify</strong>
+            </div>
+        </div>
+    </div>
+</body>
+</html>'''
+
+
+def main():
+    load_bashrc_local()
+
+    if len(sys.argv) < 2:
+        print("Usage: pueue-notify <task_id>", file=sys.stderr)
+        sys.exit(1)
+
+    task_id = sys.argv[1]
+
+    # Load environment variables
+    to_email = os.environ.get("PUEUE_NOTIFY_EMAIL")
+    gmail_address = os.environ.get("SMTP_GMAIL_ADDRESS")
+    gmail_password = os.environ.get("SMTP_GMAIL_PASSWORD")
+
+    if not all([to_email, gmail_address, gmail_password]):
+        print("Error: Required environment variables not set", file=sys.stderr)
+        print("  PUEUE_NOTIFY_EMAIL, SMTP_GMAIL_ADDRESS, SMTP_GMAIL_PASSWORD", file=sys.stderr)
+        sys.exit(1)
+
+    # Get task information
+    task = get_task_info(task_id)
+    if not task:
+        print(f"Error: Could not get info for task {task_id}", file=sys.stderr)
+        sys.exit(1)
+
+    command = task.get("command", "unknown")
+    path_dir = task.get("path", "unknown")
+    group = task.get("group", "default")
+    status = task.get("status", {})
+
+    # Determine result, duration, and times
+    duration = "N/A"
+    start_time = "N/A"
+    end_time = "N/A"
+    if isinstance(status, dict) and "Done" in status:
+        done_info = status["Done"]
+        if isinstance(done_info, dict):
+            result = done_info.get("result", "Unknown")
+            # Calculate duration and format times
+            start_str = done_info.get("start")
+            end_str = done_info.get("end")
+            if start_str and end_str:
+                try:
+                    start = datetime.fromisoformat(start_str)
+                    end = datetime.fromisoformat(end_str)
+                    duration_secs = (end - start).total_seconds()
+                    duration = format_duration(duration_secs)
+                    # Format times (show date only if different days)
+                    if start.date() == end.date():
+                        start_time = start.strftime('%Y-%m-%d %H:%M:%S')
+                        end_time = end.strftime('%H:%M:%S')
+                    else:
+                        start_time = start.strftime('%Y-%m-%d %H:%M:%S')
+                        end_time = end.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    pass
+        else:
+            result = str(done_info)
+    else:
+        result = str(status)
+
+    # Skip notification for successful tasks if PUEUE_NOTIFY_ONLY_FAILURE is set
+    only_failure = os.environ.get("PUEUE_NOTIFY_ONLY_FAILURE", "false").lower()
+    if only_failure == "true" and result == "Success":
+        sys.exit(0)
+
+    # Determine status text for subject
+    status_text = "completed" if result == "Success" else "FAILED"
+
+    # Get task log
+    log_output = get_task_log(task_id)
+
+    # Thread management - same subject for threading
+    subject = f"[pueue:{group}] Task notifications"
+
+    # Create HTML email
+    html_content = create_html_email(task_id, command, path_dir, result, log_output, duration, start_time, end_time)
+
+    # Plain text fallback
+    plain_text = f"""Task #{task_id} {status_text}
+
+Command: {command}
+Directory: {path_dir}
+Duration: {duration}
+Result: {result}
+Time: {start_time} -> {end_time}
+
+--- Log ---
+{log_output}"""
+
+    # Create multipart message
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = gmail_address
+    msg["To"] = to_email
+    msg["Date"] = formatdate(localtime=True)
+
+    # Attach both plain text and HTML (email clients will choose the best one)
+    msg.attach(MIMEText(plain_text, "plain"))
+    msg.attach(MIMEText(html_content, "html"))
+
+    # Get or create thread ID for this group
+    thread_id, is_new = get_or_create_thread_id(group, gmail_address)
+
+    if is_new:
+        # First email in thread - set Message-ID
+        msg["Message-ID"] = thread_id
+    else:
+        # Reply to thread - set In-Reply-To and References
+        msg["Message-ID"] = make_msgid(domain=gmail_address.split("@")[1])
+        msg["In-Reply-To"] = thread_id
+        msg["References"] = thread_id
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(gmail_address, gmail_password)
+            server.sendmail(gmail_address, to_email, msg.as_string())
+    except Exception as e:
+        print(f"Error sending email: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
