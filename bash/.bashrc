@@ -238,7 +238,7 @@ yank() {
 }
 
 # Virtual Desktop Docker (vdd) - Smart wrapper for rdp-ssh
-VDD_DEFAULT_SESSION="desktop-kamijo"
+VDD_DEFAULT_SESSION="desktop-$USER"
 VDD_BASE_PORT=6090
 
 # Check if a session is already running on the remote host
