@@ -195,14 +195,39 @@ $intent"
 mkcd() { mkdir -p "$1" && cd "$1"; }
 
 extract() {
-  case $1 in
-    *.tar.gz|*.tgz) tar xzf "$1" ;;
-    *.tar.bz2) tar xjf "$1" ;;
-    *.tar.xz) tar xJf "$1" ;;
-    *.zip) unzip "$1" ;;
-    *.gz) gunzip "$1" ;;
-    *) echo "Unknown format: $1" ;;
+  if [ -z "$1" ]; then
+    echo "Usage: extract <archive-file>"
+    return 1
+  fi
+
+  # Get archive basename without extension
+  local archive="$1"
+  local dirname="${archive%.*}"
+
+  # For double extensions like .tar.gz, remove both
+  case "$archive" in
+    *.tar.gz|*.tar.bz2|*.tar.xz)
+      dirname="${archive%.tar.*}"
+      ;;
   esac
+
+  # Create target directory and extract into it
+  mkdir -p "$dirname"
+
+  case $1 in
+    *.tar.gz|*.tgz)  tar xzf "$archive" -C "$dirname" ;;
+    *.tar.bz2|*.tbz) tar xjf "$archive" -C "$dirname" ;;
+    *.tar.xz)        tar xJf "$archive" -C "$dirname" ;;
+    *.tar)           tar xf "$archive" -C "$dirname" ;;
+    *.zip)           unzip -q "$archive" -d "$dirname" ;;
+    *.gz)            gunzip -c "$archive" > "$dirname/${archive%.gz}" ;;
+    *.bz2)           bunzip2 -c "$archive" > "$dirname/${archive%.bz2}" ;;
+    *.rar)           unrar x "$archive" "$dirname/" ;;
+    *.7z)            7z x "$archive" -o"$dirname" ;;
+    *)               echo "Unknown archive format: $1"; rmdir "$dirname" 2>/dev/null; return 1 ;;
+  esac
+
+  echo "Extracted to: $dirname/"
 }
 
 # OSC 52 clipboard copy for tmux over SSH (used by tmux.conf)
