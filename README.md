@@ -28,7 +28,9 @@ pixi global install \
   stylua \
   black \
   isort \
-  clang-format
+  clang-format \
+  python=3.11 \
+  pueue
 ```
 
 ## 🚀 Installation
@@ -106,6 +108,38 @@ gc
 | `n` | Cancel |
 
 > 🔑 Requires `ANTHROPIC_API_KEY` in `~/.bashrc.local`
+
+### 📬 pueue-notify - Job Completion Email Notifications
+
+Get email notifications when [pueue](https://github.com/Nukesor/pueue) tasks complete. Features HTML-formatted emails with success/failure status, command details, and truncated logs.
+
+**Setup:**
+
+1. Create a Gmail App Password:
+   - Enable 2FA at https://myaccount.google.com/security
+   - Generate app password at https://myaccount.google.com/apppasswords
+
+2. Add to `~/.bashrc.local`:
+   ```bash
+   export PUEUE_NOTIFY_EMAIL="your-email@example.com"  # Recipient
+   export SMTP_GMAIL_ADDRESS="your-gmail@gmail.com"    # Sender
+   export SMTP_GMAIL_PASSWORD="xxxx xxxx xxxx xxxx"    # App password (no spaces)
+   ```
+
+3. Start pueue daemon:
+   ```bash
+   pueued -d
+   ```
+
+**Features:**
+- Emails grouped into threads by pueue group
+- Long logs truncated (first 10 + last 10 lines)
+- Optional: Set `PUEUE_NOTIFY_ONLY_FAILURE=true` to only notify on failures
+
+**Reset email threads:**
+```bash
+rm ~/.local/share/pueue-notify/threads.json
+```
 
 ## ⚙️ Post-Installation
 
