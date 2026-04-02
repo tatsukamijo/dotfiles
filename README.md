@@ -30,7 +30,8 @@ pixi global install \
   isort \
   clang-format \
   python=3.11 \
-  pueue
+  pueue \
+  ripgrep
 ```
 
 ## 🚀 Installation
