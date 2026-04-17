@@ -336,6 +336,7 @@ export SSH_AUTH_SOCK="$HOME/.ssh/ssh_auth_sock"
 
 # Pixi
 export PATH="$HOME/.pixi/bin:$PATH"
+export PATH="$HOME/.pixi/envs/nodejs/bin:$PATH"
 if command -v pixi &> /dev/null; then
     eval "$(pixi completion --shell bash)"
 fi
@@ -346,4 +347,3 @@ export PATH="$HOME/.local/bin:$PATH"
 # ANTHROPIC_API_KEY should be set in ~/.bashrc.local or environment
 # Load local overrides
 [ -f ~/.bashrc.local ] && . ~/.bashrc.local
-export PATH="$HOME/.pixi/envs/nodejs/bin:$PATH"
