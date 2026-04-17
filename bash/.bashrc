@@ -346,3 +346,4 @@ export PATH="$HOME/.local/bin:$PATH"
 # ANTHROPIC_API_KEY should be set in ~/.bashrc.local or environment
 # Load local overrides
 [ -f ~/.bashrc.local ] && . ~/.bashrc.local
+export PATH="$HOME/.pixi/envs/nodejs/bin:$PATH"
