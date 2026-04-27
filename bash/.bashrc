@@ -78,6 +78,15 @@ gc() {
     return 1
   fi
 
+  local ANTHROPIC_API_KEY
+  if [[ -f ~/.anthropic_api_key ]]; then
+    ANTHROPIC_API_KEY=$(tr -d '[:space:]' < ~/.anthropic_api_key)
+  fi
+  if [[ -z "$ANTHROPIC_API_KEY" ]]; then
+    echo "No API key found at ~/.anthropic_api_key"
+    return 1
+  fi
+
   # Limit diff but keep motivation clues
   local diff_excerpt=$(
     echo "$diff" | awk '
@@ -344,6 +353,8 @@ fi
 # Local bin
 export PATH="$HOME/.local/bin:$PATH"
 
-# ANTHROPIC_API_KEY should be set in ~/.bashrc.local or environment
+# ANTHROPIC_API_KEY is intentionally NOT exported to the environment
+# (so tools like happy don't auto-prefer the API over a subscription).
+# The `gc` function reads it on demand from ~/.anthropic_api_key (key only, no `export`).
 # Load local overrides
 [ -f ~/.bashrc.local ] && . ~/.bashrc.local
