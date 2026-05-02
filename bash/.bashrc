@@ -410,5 +410,9 @@ export PATH="$HOME/.local/bin:$PATH"
 # ANTHROPIC_API_KEY is intentionally NOT exported to the environment
 # (so tools like happy don't auto-prefer the API over a subscription).
 # The `gc` function reads it on demand from ~/.anthropic_api_key (key only, no `export`).
+
+# Claude Code: enable experimental Agent Teams feature
+export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+
 # Load local overrides
 [ -f ~/.bashrc.local ] && . ~/.bashrc.local
