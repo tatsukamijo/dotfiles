@@ -72,10 +72,56 @@ function promps {
 promps
 
 gc() {
+  # Flags:
+  #   -y, --yes           : skip the interactive prompt, auto-accept generated message
+  #   -m, --message MSG   : skip AI generation, use literal MSG as the commit message
+  #   -i, --intent  TEXT  : pass intent to the generator (skips interactive intent prompt)
+  #   -h, --help          : show this help
+  # Non-TTY stdin (piped / agent) implies -y.
+  local literal_msg=""
+  local intent_arg=""
+  local auto_yes=0
+  while (( $# )); do
+    case "$1" in
+      -y|--yes)     auto_yes=1; shift ;;
+      -m|--message) literal_msg="$2"; auto_yes=1; shift 2 ;;
+      -i|--intent)  intent_arg="$2"; shift 2 ;;
+      -h|--help)
+        cat <<'GC_HELP'
+Usage: gc [OPTIONS]
+
+  Stage-aware commit helper. Generates a conventional-commits message
+  via Claude Haiku from the staged diff, then prompts for confirmation.
+
+Options:
+  -y, --yes           Skip the interactive prompt; auto-accept.
+  -m, --message MSG   Skip AI generation; use MSG as the commit message.
+  -i, --intent TEXT   Pass intent to the generator (skips interactive intent
+                      prompt). Combine with -y for non-interactive runs.
+  -h, --help          Show this help.
+
+Notes:
+  - When stdin is not a TTY (piped / agent invocation), behaves as if -y.
+  - Without flags, runs the original interactive flow.
+GC_HELP
+        return 0 ;;
+      *) echo "gc: unknown flag: $1" >&2; return 2 ;;
+    esac
+  done
+
+  # If stdin isn't a tty, we can't prompt — auto-accept.
+  [[ ! -t 0 ]] && auto_yes=1
+
   local diff=$(git diff --cached)
   if [[ -z "$diff" ]]; then
     echo "Nothing staged"
     return 1
+  fi
+
+  # Literal-message path: skip AI entirely.
+  if [[ -n "$literal_msg" ]]; then
+    git commit -m "$literal_msg"
+    return $?
   fi
 
   local ANTHROPIC_API_KEY
@@ -174,8 +220,16 @@ $intent"
   }
 
   local start=$(date +%s.%N)
-  local msg=$(generate_msg "")
+  local msg=$(generate_msg "$intent_arg")
   local elapsed=$(echo "$(date +%s.%N) - $start" | bc)
+
+  # Non-interactive path: print the message + commit directly.
+  if (( auto_yes )); then
+    echo -e "\033[90m(${elapsed}s)\033[0m"
+    echo -e "\033[38;5;159m$msg\033[0m"
+    git commit -m "$msg"
+    return $?
+  fi
 
   while true; do
     echo -e "\033[90m(${elapsed}s)\033[0m"
