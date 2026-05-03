@@ -375,8 +375,29 @@ vdd() {
 }
 
 # Open files in parent nvim from :terminal
+# - nvim FILE       → open in a new vertical split (like neo-tree 's')
+# - nvim -e FILE    → reuse an existing editor window
+#                     (skips :terminal and Claude Code panes); else new vsplit
 if [[ -n "$NVIM" ]]; then
-  alias nvim='nvim --server "$NVIM" --remote'
+  nvim() {
+    local mode='split'
+    if [[ "$1" == "-e" || "$1" == "--edit" ]]; then
+      mode='edit'
+      shift
+    fi
+    if [[ $# -eq 0 ]]; then
+      return 0
+    fi
+    local f abs
+    for f in "$@"; do
+      case "$f" in
+        /*) abs="$f" ;;
+        *)  abs="$PWD/$f" ;;
+      esac
+      command nvim --server "$NVIM" --remote-send \
+        "<Cmd>lua _G.OpenFromTerm([==[${abs}]==], [==[${mode}]==])<CR>" 2>/dev/null
+    done
+  }
 fi
 
 # Bash completion
