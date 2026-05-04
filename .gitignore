@@ -1,5 +1,15 @@
-# Claude Code
-.claude/
+# Claude Code project-local notes for the dotfiles repo itself
+# (NOT the claude/ stow package, which manages ~/.claude global config)
+/.claude/
+
+# claude/ stow package: allowlist what we actually track
+claude/.claude/*
+!claude/.claude/CLAUDE.md
+!claude/.claude/settings.json
+!claude/.claude/statusline.js
+!claude/.claude/commands/
+!claude/.claude/skills/
+!claude/.claude/hooks/
 
 # OS
 .DS_Store

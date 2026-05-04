@@ -34,7 +34,24 @@ pixi global install \
   ripgrep
 ```
 
+### 3. Install Claude Code
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
 ## 🚀 Installation
+
+### Quick start (idempotent installer)
+
+```bash
+git clone --recursive git@github.com:tatsukamijo/dotfiles.git ~/dotfiles
+cd ~/dotfiles && bash install.sh
+```
+
+`install.sh` is **safe to re-run** from any partial state. It installs pixi, the global tool list, Claude Code, submodules, then symlinks every package via `stow -R`. Pre-existing real files are timestamp-backed up (`*.bak.<TS>`); existing symlinks are left alone.
+
+For manual / step-by-step installation, see below.
 
 ### 1. Clone this repository with submodules
 
@@ -59,6 +76,14 @@ for f in .bashrc .inputrc .tmux.conf; do [ -f ~/$f ] && mv ~/$f ~/$f.bak; done
 [ -d ~/.config/nvim ] && mv ~/.config/nvim ~/.config/nvim.bak
 [ -d ~/.config/pueue ] && mv ~/.config/pueue ~/.config/pueue.bak
 [ -f ~/.local/bin/rdp-ssh ] && mv ~/.local/bin/rdp-ssh ~/.local/bin/rdp-ssh.bak
+
+# Backup Claude Code global config if real files (not symlinks) already exist
+for f in CLAUDE.md settings.json statusline.js; do
+  [ -e ~/.claude/$f ] && [ ! -L ~/.claude/$f ] && mv ~/.claude/$f ~/.claude/$f.bak
+done
+for d in commands skills; do
+  [ -d ~/.claude/$d ] && [ ! -L ~/.claude/$d ] && mv ~/.claude/$d ~/.claude/$d.bak
+done
 
 # Stow all configurations
 stow -v */
@@ -142,6 +167,14 @@ Get email notifications when [pueue](https://github.com/Nukesor/pueue) tasks com
 ```bash
 rm ~/.local/share/pueue-notify/threads.json
 ```
+
+## 🤖 Claude Code Global Config (`claude/` package)
+
+Manages `~/.claude/` global config: `CLAUDE.md`, `settings.json`, `statusline.js`, `commands/`, `skills/`.
+
+Machine-local state (`projects/`, `todos/`, `sessions/`, `.credentials.json`, `settings.local.json`, `memory/`, etc.) is excluded via `.gitignore` and stays per-machine.
+
+The statusline shows model, dir, token usage, and % of auto-compact limit. Requires `node` on `PATH`.
 
 ## ⚙️ Post-Installation
 
