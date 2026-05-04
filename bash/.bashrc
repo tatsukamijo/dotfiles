@@ -62,12 +62,10 @@ function promps {
     local BLUE="\[\e[1;34m\]"
     local GREEN="\[\e[1;32m\]"
     local WHITE="\[\e[00m\]"
-    case $TERM in
-        xterm*) TITLEBAR='\[\e]0;\w\007\]';;
-        *)      TITLEBAR="";;
-    esac
+    # Terminal title is set by __clipimg_prompt below (hostname, not cwd) so
+    # the Mac-side Hammerspoon clipboard router can identify the remote.
     local BASE="\u@\h"
-    PS1="${TITLEBAR}${GREEN}${BASE}${WHITE}:${BLUE}\w${GREEN}\$(parse_git_branch)${BLUE}\$${WHITE} "
+    PS1="${GREEN}${BASE}${WHITE}:${BLUE}\w${GREEN}\$(parse_git_branch)${BLUE}\$${WHITE} "
 }
 promps
 
@@ -434,6 +432,36 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # Claude Code: enable experimental Agent Teams feature
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+
+# Mac-side Hammerspoon (Cmd+Ctrl+V) routes a clipboard image to the focused
+# SSH host via `pngpaste - | ssh <alias> clipimg-recv`. To make that work:
+#  1. Title the outer terminal with `hostname -s` so HS can detect the target.
+#  2. Persist the current $DISPLAY (which changes across virtual_desktop_docker
+#     sessions) to a file the receiver script reads.
+__clipimg_prompt() {
+    printf '\033]0;%s\007' "$(hostname -s)"
+    [ -n "$DISPLAY" ] && {
+        mkdir -p "$HOME/.cache"
+        printf '%s' "$DISPLAY" > "$HOME/.cache/current-display"
+    }
+}
+case "$TERM" in
+    xterm*|rxvt*|tmux*|screen*|alacritty*|ghostty*|wezterm*)
+        PROMPT_COMMAND="__clipimg_prompt${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+        ;;
+esac
+
+# Sanity check: dump current X clipboard image to a file and echo the path.
+clipimg() {
+    local out="${1:-/tmp/clip-$(date +%s).png}"
+    if xclip -selection clipboard -t image/png -o > "$out" 2>/dev/null && [ -s "$out" ]; then
+        echo "$out"
+    else
+        echo "no image in clipboard" >&2
+        rm -f "$out"
+        return 1
+    fi
+}
 
 # Load local overrides
 [ -f ~/.bashrc.local ] && . ~/.bashrc.local
