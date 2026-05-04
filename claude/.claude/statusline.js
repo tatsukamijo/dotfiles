@@ -62,6 +62,44 @@ const buildBar = (percent, width = 10) => {
   return "█".repeat(filled) + "░".repeat(width - filled);
 };
 
+/**
+ * Read the last main-thread assistant `usage` from a transcript jsonl file.
+ * Skips sidechain (sub-agent) messages and synthetic compaction summaries so
+ * the statusline reflects the same accounting as `/context`.
+ * @param {string} transcriptPath
+ * @returns {{ input: number, cacheCreate: number, cacheRead: number } | null}
+ */
+const readLatestUsage = (transcriptPath) => {
+  if (!transcriptPath) return null;
+  let raw;
+  try {
+    raw = fs.readFileSync(transcriptPath, "utf8");
+  } catch {
+    return null;
+  }
+  const lines = raw.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (entry.isSidechain) continue;
+    if (entry.type !== "assistant") continue;
+    const usage = entry.message?.usage;
+    if (!usage) continue;
+    const input = usage.input_tokens || 0;
+    const cacheCreate = usage.cache_creation_input_tokens || 0;
+    const cacheRead = usage.cache_read_input_tokens || 0;
+    if (input + cacheCreate + cacheRead === 0) continue;
+    return { input, cacheCreate, cacheRead };
+  }
+  return null;
+};
+
 const ANSI = {
   reset: "\x1b[0m",
   bold: "\x1b[1m",
@@ -85,19 +123,19 @@ const buildStatusLine = (input) => {
   const currentDir = path.basename(cwd);
   const branch = findGitBranch(cwd);
 
-  const contextWindow = data.context_window || {};
-  const contextSize = contextWindow.context_window_size || 0;
-  const currentUsage = contextWindow.current_usage || {};
-  const autoCompactLimit = contextSize * 0.8;
+  const modelId = data.model?.id || "";
+  const isLongContext =
+    /\[1m\]$/.test(modelId) || data.exceeds_200k_tokens === true;
+  const contextWindowSize = isLongContext ? 1_000_000 : 200_000;
 
-  const currentTokens =
-    (currentUsage.input_tokens || 0) +
-    (currentUsage.cache_creation_input_tokens || 0) +
-    (currentUsage.cache_read_input_tokens || 0);
+  const usage = readLatestUsage(data.transcript_path);
+  const currentTokens = usage
+    ? usage.input + usage.cacheCreate + usage.cacheRead
+    : 0;
 
   const percentage =
-    autoCompactLimit > 0
-      ? Math.min(100, Math.round((currentTokens / autoCompactLimit) * 100))
+    contextWindowSize > 0
+      ? Math.min(100, Math.round((currentTokens / contextWindowSize) * 100))
       : 0;
   const tokenDisplay = formatTokenCount(currentTokens);
 
