@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Receive a PNG image on stdin and put it onto the X clipboard.
+# DISPLAY is read from $DISPLAY, then ~/.cache/current-display (written by
+# bashrc each prompt — accommodates virtual_desktop_docker reassigning :N),
+# then falls back to :0.
+set -euo pipefail
+
+disp="${DISPLAY:-}"
+[ -z "$disp" ] && [ -r "$HOME/.cache/current-display" ] && disp="$(cat "$HOME/.cache/current-display")"
+disp="${disp:-:0}"
+
+if ! command -v xclip >/dev/null 2>&1; then
+    echo "clipimg-recv: xclip not found in PATH" >&2
+    exit 127
+fi
+
+DISPLAY="$disp" xclip -selection clipboard -t image/png -i
