@@ -127,9 +127,9 @@ const buildStatusLine = (input) => {
   const isLongContext =
     /\[1m\]$/.test(modelId) || data.exceeds_200k_tokens === true;
   // Match /context: Claude Code's autocompact threshold for the [1m] long
-  // context model is 500K, not the nominal 1M. Using 500K here makes the
+  // context model is 700K, not the nominal 1M. Using 700K here makes the
   // statusline % equal to /context.
-  const contextWindowSize = isLongContext ? 500_000 : 200_000;
+  const contextWindowSize = isLongContext ? 700_000 : 200_000;
 
   const usage = readLatestUsage(data.transcript_path);
   const currentTokens = usage
