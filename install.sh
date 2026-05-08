@@ -106,9 +106,13 @@ ensure_submodules() {
 #    (we want stow to fold at file-level inside them, not at the dir level)
 #------------------------------------------------------------------------------
 ensure_real_dirs() {
-  for d in "$HOME/.config" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.claude"; do
+  # Order matters: parents before children. ~/.local MUST exist as a real dir
+  # before stow runs, otherwise stow folds it into a single symlink to
+  # whichever package owns .local/, swallowing all future writes from claude,
+  # nvim, etc. into the dotfiles repo.
+  for d in "$HOME/.config" "$HOME/.local" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.local/state" "$HOME/.claude"; do
     if [ -L "$d" ]; then
-      warn "$d is a symlink; leaving as-is (you may want to inspect)"
+      warn "$d is a symlink (likely stow-folded); leaving as-is — inspect and replace with a real dir before re-stowing"
     else
       mkdir -p "$d"
     fi
