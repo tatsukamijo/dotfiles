@@ -6,6 +6,102 @@ case $- in
       *) return;;
 esac
 
+# ============================================================
+# Login node protection
+#
+# On login hosts (aic-login-*), interactive shells get:
+#   1. cgroup hard cap via systemd --user scope (CPU/memory/pids)
+#   2. auto-nice on build/install tools so child compiles inherit
+#   3. status banner showing load + own footprint
+#
+# Escape hatches:
+#   NO_CAP=1 bash       — start one bypass shell (cap off)
+#   command pip ...     — invoke a tool without the nice wrapper
+# Inspect:  systemctl --user status login-cap.slice
+# ============================================================
+if [[ "$(hostname)" == *login* ]]; then
+
+    # --- Tier 1: cgroup hard cap (re-exec interactive shell) ---
+    # CPUQuota=400% = max 4 cores; MemoryMax=48G hard ceiling.
+    # Prevents accidental login-node overload (rogue parallel compiles,
+    # pip building wheels with cc1plus x N, etc.). Child processes inherit.
+    if [ -z "$CGROUP_CAPPED" ] && [ -z "$NO_CAP" ] \
+       && [ -z "$BASH_EXECUTION_STRING" ] \
+       && command -v systemd-run >/dev/null 2>&1 \
+       && systemctl --user is-system-running &>/dev/null; then
+        export CGROUP_CAPPED=1
+        shopt -q login_shell && _lflag=-l || _lflag=-i
+        exec systemd-run --user --scope --quiet \
+            --slice=login-cap.slice \
+            -p CPUQuota=400% \
+            -p MemoryHigh=24G \
+            -p MemoryMax=48G \
+            -p TasksMax=4096 \
+            bash $_lflag
+    fi
+
+    # --- Tier 2: auto-nice heavy build/install tools ---
+    # Aliases only fire for direct invocation; child gcc/cc1plus inherit
+    # niceness from the parent (make/cmake/pip/uv), which is what we want.
+    for _cmd in pip pip3 uv pdm poetry conda mamba \
+                make cmake ninja cargo \
+                npm pnpm yarn bazel meson; do
+        alias "$_cmd"="nice -n 19 ionice -c3 command $_cmd"
+    done
+    unset _cmd
+
+    # --- Tier 3: shell-start status banner ---
+    _login_banner() {
+        local load1 myproc mycpu myrss mystale
+        load1=$(awk '{print int($1)}' /proc/loadavg)
+        myproc=$(ps -u "$USER" --no-headers 2>/dev/null | wc -l)
+        mycpu=$(ps -u "$USER" -o pcpu= 2>/dev/null | awk '{s+=$1} END{print int(s)}')
+        myrss=$(ps -u "$USER" -o rss= 2>/dev/null | awk '{s+=$1} END{printf "%.0f", s/1024/1024}')
+        mystale=$(ps -u "$USER" -o etimes= 2>/dev/null | awk '$1>86400 {n++} END{print n+0}')
+        printf '\033[90m[%s] load=%d  mine: %d procs / %d%%CPU / %sG RAM' \
+            "$(hostname -s)" "$load1" "$myproc" "$mycpu" "$myrss"
+        [ "$mystale" -gt 0 ] && printf '  WARN: %d stale>24h' "$mystale"
+        printf '\033[0m\n'
+        [ "$load1" -gt 15 ] && \
+            printf '\033[33m! high load — consider another login node\033[0m\n'
+        [ -n "$CGROUP_CAPPED" ] && \
+            printf '\033[90mshell capped: 4 CPU / 48G mem  (NO_CAP=1 bash to bypass)\033[0m\n'
+    }
+    _login_banner
+    unset -f _login_banner
+
+fi
+
+# --- Cross-host helpers ---
+# Inspect own processes; clean up stale ones.
+myprocs() {
+    case "${1:-top}" in
+        top)
+            ps -u "$USER" -o pid,etime,pcpu,pmem,stat,comm --no-headers --sort=-pcpu | head -20 ;;
+        old)
+            # show only procs older than 24h (etime contains '-' for days, or HH:MM:SS form)
+            ps -u "$USER" -o pid,etime,pcpu,stat,comm --no-headers --sort=-etime \
+                | awk '$2~/-/ || $2~/^[0-9]+:[0-9]{2}:[0-9]{2}$/' ;;
+        kill-stale)
+            local days=${2:-3} secs pids
+            secs=$((days*86400))
+            pids=$(ps -u "$USER" -o pid,etimes,comm --no-headers \
+                | awk -v t="$secs" '$2>t && $3!~/^(tmux:|sshd|bash|systemd|\(sd-pam\))/ {print $1}')
+            if [ -z "$pids" ]; then
+                echo "no procs older than ${days}d"
+                return 0
+            fi
+            echo "TERM-ing these in 3s (Ctrl-C to abort):"
+            ps -p "$(echo $pids | tr ' ' ',')" -o pid,etime,comm
+            sleep 3
+            echo "$pids" | xargs kill -TERM
+            echo "sent SIGTERM to $(echo $pids | wc -w) procs" ;;
+        *)
+            echo "usage: myprocs {top|old|kill-stale [days]}" >&2
+            return 2 ;;
+    esac
+}
+
 # History settings
 HISTCONTROL=ignoreboth:erasedups
 shopt -s histappend
@@ -419,8 +515,16 @@ export SSH_AUTH_SOCK="$HOME/.ssh/ssh_auth_sock"
 # Pixi
 export PATH="$HOME/.pixi/bin:$PATH"
 export PATH="$HOME/.pixi/envs/nodejs/bin:$PATH"
-if command -v pixi &> /dev/null; then
-    eval "$(pixi completion --shell bash)"
+# if command -v pixi &> /dev/null; then
+#     eval "$(pixi completion --shell bash)"
+# fi
+
+if command -v pixi >/dev/null 2>&1; then
+    _pixi_comp="/tmp/pixi-completion-$USER.bash"
+    if [ ! -s "$_pixi_comp" ]; then
+        timeout 3 pixi completion --shell bash > "$_pixi_comp" 2>/dev/null || true
+    fi
+    [ -s "$_pixi_comp" ] && source "$_pixi_comp"
 fi
 
 # Local bin
