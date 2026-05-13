@@ -1,6 +1,6 @@
 ---
 name: pueue-monitor
-description: Set up event-driven pueue monitoring (Monitor tool + jq state poller) so background pueue jobs notify Claude only on state transitions. Use when the user runs long pueue chains (training, conversion, copy) and wants Claude to react only on failure/completion without burning tokens on idle polling. Also covers the two pueue+Claude foot-guns we hit (argv tokenization in `pueue add -- bash -lc`, and the `Done.result` JSON shape).
+description: Set up event-driven pueue monitoring (Monitor tool + jq state poller) so background pueue jobs notify Claude only on state transitions. Use when the user runs long pueue chains (training, conversion, copy) and wants Claude to react only on failure/completion without burning tokens on idle polling. Also covers the two pueue+Claude foot-guns we hit (argv tokenization when wrapping commands in `bash -c` / `bash -lc`, and the `Done.result` JSON shape).
 ---
 
 # pueue monitor skill
@@ -14,21 +14,73 @@ The user has long-running pueue chains (training, dataset conversion, large copi
 - React on failure/completion, not on every poll
 - Not burn tokens checking "still Running" repeatedly
 
-## Foot-gun 1 — argv tokenization
+## Foot-gun 1 — argv tokenization (the `bash -c` trap)
 
-`pueue add -- bash -lc 'rsync -a src/ dst/'` looks safe but **breaks**.
-pueue tokenizes the post-`--` argv into separate words, then re-joins as a space-separated string for storage. On execution it runs `sh -c '<stored>'`, which re-parses — and `bash -lc` then sees only the first word as the command-string, the rest as positional ($0, $1, ...). Rsync gets no args → exits 1 with help.
+The single most-repeated foot-gun: wrapping a `pueue add` command with
+`bash -lc '<multi-arg>'` or `bash -c '<multi-arg>'`. The outer shell
+strips the quotes **before** pueue ever sees them, so the "single
+string" of shell code becomes a bunch of separate argv entries. pueue
+joins them back with spaces and runs `sh -c '<joined>'`, but `bash -c`
+(or `-lc`) inside that re-joined string only takes the first post-`-c`
+token as the script — the rest become positional arguments. The actual
+command never runs.
 
-**Use the single-string form instead:**
+We've hit this repeatedly: `pueue add -- bash -lc pixi run …`,
+`pueue add -- bash -c "cp -r SRC/. DST/ && echo done"`, etc. Each time
+the job exits in ~0 s with cryptic output (rsync help, `cp: missing
+file operand`, pixi help banner).
+
+### The two valid patterns — never combine them
+
+**(a) Direct command, no shell features needed** — use `pueue add --`:
 
 ```bash
-pueue add 'rsync -a --inplace src/ dst/'
-pueue add --after 0 --working-directory /path/to/repo 'pixi run my_task'
+pueue add -- cp -r /src/. /dst/
+pueue add --after 0 --working-directory /repo -- pixi run train_phase1
 ```
 
-`pueue add 'CMD'` stores the literal string and runs `sh -c 'CMD'` correctly.
+pueue stores `cp -r /src/. /dst/` and runs it via `sh -c <stored>`. No
+`bash` wrapper. Works for any plain `prog arg1 arg2 …`.
 
-If wandb / env vars are needed: prefer file-based credentials (`~/.netrc` is read by file, no env needed). Avoid `bash -lc` wrappers unless absolutely necessary.
+**(b) Need shell features (`&&`, pipes, redirects, env subst, `cd`)** —
+use the single-string form (no `--`):
+
+```bash
+pueue add 'cp -r /src/. /dst/ && echo done'
+pueue add --after 0 'cd /repo && pixi run pipeline | tee /tmp/log'
+```
+
+pueue stores the literal string and runs it via `sh -c '<string>'`. The
+shell features are interpreted at execution time, not by the calling
+shell.
+
+### What never works
+
+```bash
+pueue add -- bash -c "cmd && other"      # outer quotes stripped → broken
+pueue add -- bash -lc "pixi run …"       # same
+```
+
+If you genuinely need a multi-line bash script with login-shell
+sourcing, write the script to a file and `pueue add -- bash
+/abs/path/script.sh`. Don't inline it.
+
+If wandb / env vars are needed: prefer file-based credentials
+(`~/.netrc` is read by file, no env needed). Avoid `bash -lc` wrappers
+unless absolutely necessary.
+
+### Verification
+
+After submitting, check the stored command:
+
+```bash
+pueue status --json | jq '.tasks["<id>"].command'
+```
+
+If you see your shell features rendered as bare tokens
+(`"bash -c cp -r /src/. /dst/ && echo done"` with no quoting around the
+script), you have hit this trap — remove the task and resubmit in form
+(a) or (b).
 
 ## Foot-gun 2 — `Done.result` JSON shape varies
 
@@ -75,12 +127,17 @@ Wire it via the `Monitor` tool with `persistent: true`, `timeout_ms: 3600000`, a
 
 Given a chain with deps `0 → 1 → 2 → 3`:
 
-1. **Queue** with single-string commands:
+1. **Queue** with either form (a) `pueue add -- prog args` or (b)
+   `pueue add 'shell command'` (use (b) only when you actually need
+   `&&`, pipes, or env subst). Never mix with `bash -c` wrappers — see
+   Foot-gun 1.
    ```bash
-   pueue add 'rsync -a src/ dst/'                                              # id 0
-   pueue add --after 0 --working-directory /repo 'pixi run convert'            # id 1
-   pueue add --after 1 --working-directory /repo 'pixi run train_phase1'       # id 2
-   pueue add --after 2 --working-directory /repo 'pixi run train_phase2'       # id 3
+   pueue add -- rsync -a /src/ /dst/                                           # id 0 (form a)
+   pueue add --after 0 --working-directory /repo -- pixi run convert           # id 1 (form a)
+   pueue add --after 1 --working-directory /repo -- pixi run train_phase1      # id 2 (form a)
+   pueue add --after 2 --working-directory /repo -- pixi run train_phase2      # id 3 (form a)
+   # If a step needs shell features:
+   # pueue add --after 3 'cd /repo && pixi run eval | tee /tmp/eval.log'       # id 4 (form b)
    ```
 2. **Start the monitor** with the matching id list (see template above).
 3. **Wait** — events arrive via `<task-notification>` only on state changes. Initial baseline emits once.
