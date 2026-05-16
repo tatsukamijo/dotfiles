@@ -31,5 +31,6 @@
   },
   "alwaysThinkingEnabled": true,
   "theme": "dark-ansi",
-  "skipAutoPermissionPrompt": true
+  "skipAutoPermissionPrompt": true,
+  "effortLevel": "xhigh"
 }
