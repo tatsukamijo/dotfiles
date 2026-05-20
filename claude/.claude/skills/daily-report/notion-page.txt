@@ -1,0 +1,11 @@
+# daily-report → Notion sync target (GLOBAL fallback).
+# Replace the NOT_CONFIGURED line below with the URL (or 32-hex page ID) of
+# the shared Notion PARENT page. Each daily report is created as a dated child
+# page (titled "<DATE> — <PROJECT>") under it.
+#
+# Per-project override: a project may instead define its own parent page in
+# <project>/.claude/daily-report-notion.txt — that takes precedence over this file.
+#
+# Values: a page URL/ID = sync there. NOT_CONFIGURED = unset (the skill asks the
+# user on first run). DISABLED = Notion sync off, never ask again.
+NOT_CONFIGURED
