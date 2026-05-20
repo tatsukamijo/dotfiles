@@ -1,110 +1,180 @@
 ---
 name: daily-report
-description: Generate a concise research-style daily report for the current project, written by a delegated agent. Output goes to `<project>/.claude/daily-reports/YYYY-MM-DD.md` using the bundled template, and (if configured) is also created as a dated child page under a Notion parent page via the Notion MCP. Use when the user says things like "今日の日報書いて", "daily report", "今日のまとめ", or asks for a summary of today's work in this project.
+description: Generate a terse research-style daily report for the current project. Runs almost entirely in a background agent — the foreground only resolves paths and the Notion target, then a background worker reads today's session transcript + git activity, drafts the report to <project>/.claude/daily-reports/YYYY-MM-DD.md, and (if configured) syncs it as a dated child page placed at the TOP of a Notion parent page. Use when the user says "今日の日報書いて", "daily report", "今日のまとめ", or asks to summarize today's work in this project.
 ---
 
 # Daily Report
 
-Write a **research-style** daily report for today's work in the current project. A subagent does the actual drafting; the orchestrator only sets up paths and dispatches.
+One terse research-style daily report for the current project. The whole job
+runs in a **single background agent**: `/daily-report` resolves a few paths in
+the foreground, fires the worker, and returns immediately. You are notified when
+the report is saved locally and synced to Notion.
 
-The report is **terse**: bullets, tables, conclusions. **No journey narrative** ("then I tried X, then Y…"). State what was done and what was learned.
+The report is terse — bullets, tables, conclusions. **No journey narrative.**
 
-## Steps
+## Step 1 — resolve in the foreground (fast)
 
-1. **Resolve paths.**
-   ```sh
-   ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-   DATE=$(date +%Y-%m-%d)
-   OUT="$ROOT/.claude/daily-reports/$DATE.md"
-   mkdir -p "$ROOT/.claude/daily-reports"
-   ```
-   If `$OUT` already exists, ask the user whether to **overwrite** or **append a new section** (with a `## Update HH:MM` header). Default to overwrite if they don't answer.
+A background agent cannot read your live conversation and cannot ask you
+questions, so the foreground does just two things: resolve paths, and settle the
+Notion target.
 
-2. **Gather raw signals yourself** (cheap, keeps the subagent focused). Run the git commands in parallel and capture output:
-   - `git log --since=midnight --pretty='%h %s' --no-merges` — today's commits
-   - `git log --since='1 day ago' --pretty='%h %s' --no-merges` — fallback if today is empty
-   - `git status --short`
-   - `git diff --stat HEAD~5..HEAD` (or `HEAD` if fewer than 5 commits)
-   - `git rev-parse --abbrev-ref HEAD`
-   - Project name = basename of `$ROOT`
-   - List of yesterday's report if present (`ls .claude/daily-reports/ | tail -3`) — for continuity
+**Paths:**
+```sh
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+DATE=$(date +%Y-%m-%d)
+OUT="$ROOT/.claude/daily-reports/$DATE.md"
+TRANSCRIPT=$(find "$HOME/.claude/projects" -maxdepth 2 -name "${CLAUDE_CODE_SESSION_ID}.jsonl" 2>/dev/null | head -1)
+```
+`CLAUDE_CODE_SESSION_ID` is set by Claude Code and the transcript file is named
+`<session-id>.jsonl`, so this `find` resolves it exactly. If `TRANSCRIPT` is
+empty, fall back to the newest `*.jsonl` in that project dir; if still none,
+pass `TRANSCRIPT=none` (the worker then uses git only).
 
-   Then compose the **session digest** — usually the richest signal, and you write it directly (no command):
-   - From **your own conversation context for this session**, list — terse and factual — what was actually worked on: tasks tackled, decisions made, problems diagnosed and their root causes, things learned, what's left open.
-   - git routinely undersells a day: uncommitted edits, design decisions, debugging dead-ends, and reasoning never reach a commit message. The session digest is what closes that gap.
-   - If this session's context was compacted, work from the compaction summary — do not guess at lost detail.
-   - No narrative ("then I…"). Just the facts, one line each.
+**Notion target** — resolve now, because the worker cannot ask:
+- First hit wins: project-local `$ROOT/.claude/daily-report-notion.txt`, then the
+  global `notion-page.txt` in this skill's directory.
+- Value = first line that is not blank and not starting with `#`. `DISABLED` →
+  Notion off. A real URL/ID → that is the parent page. `NOT_CONFIGURED` or a
+  missing file → fall through to the next source.
+- If neither file decides it, **ask the user once**: "Notion parent page URL for
+  this project? (paste a URL, or say `skip`)". A URL → strip any `?...` query and
+  write it to `$ROOT/.claude/daily-report-notion.txt`. `skip` → write `DISABLED`
+  there so the project is never asked again.
+- The result is a single value: a parent page URL/ID, or the literal `DISABLED`.
 
-3. **Delegate the drafting to a subagent.** Use the `Agent` tool with `subagent_type: general-purpose`. Pass the gathered signals **inline** in the prompt so the subagent doesn't re-run git commands. Tell it to:
-   - Read the template at the absolute path of `template.md` next to this SKILL.md.
-   - Write the filled report to `$OUT` (give the absolute path).
-   - Replace `{{DATE}}`, `{{PROJECT}}`, `{{BRANCH}}` placeholders.
-   - Fill each section using ONLY the signals provided + a brief look at the most-changed files if needed for context (cap at 3 file reads).
-   - Keep it terse: bullets ≤ 1 line each, prefer tables for experiments, no preamble, no closing summary.
-   - Drop sections that have no content by writing `None` or `N/A` rather than padding.
-   - Do NOT invent experiments, metrics, or blockers that aren't in the signals or asked about.
-   - Return only the saved path.
+## Step 2 — dispatch the background worker
 
-   Example prompt skeleton (fill in the `<<...>>` slots before sending):
-   ```
-   Draft today's research-style daily report and save it to <<OUT>>.
+One `Agent` call with `run_in_background: true` and `subagent_type: "general-purpose"`.
+Fill every `<<...>>` slot in the **Background worker prompt** below and send it.
 
-   Template (read first, copy structure verbatim, then fill):
-     <<absolute path to template.md>>
+If the user passed extra context (e.g. "include the eval numbers"), append it
+verbatim to the worker prompt — do not summarize it away.
 
-   Project: <<PROJECT>>
-   Branch:  <<BRANCH>>
-   Date:    <<DATE>>
+## Step 3 — return immediately
 
-   Today's commits:
-   <<git log output>>
+Tell the user the report is generating in the background and they will be
+notified on completion. Do not wait, do not poll.
 
-   Working tree:
-   <<git status output>>
+## Background worker prompt
 
-   Recent diff stat:
-   <<git diff --stat output>>
+```
+You are the daily-report worker. Work autonomously — nobody can answer questions.
 
-   Session digest — what was actually worked on today (PRIMARY source):
-   <<session digest>>
+Inputs:
+  ROOT          = <<ROOT>>
+  PROJECT       = <<basename of ROOT>>
+  BRANCH        = <<current git branch>>
+  DATE          = <<DATE>>            (local date, YYYY-MM-DD)
+  OUT           = <<OUT>>
+  TRANSCRIPT    = <<TRANSCRIPT path, or "none">>
+  TEMPLATE      = <<skill dir>>/template.md
+  NOTION_PARENT = <<parent page URL/ID, or "DISABLED">>
 
-   Yesterday's report (for continuity, optional): <<path or "none">>
+1. Git signals — run in ROOT, capture output:
+   - git log --since=midnight --pretty='%h %s' --no-merges
+   - git status --short
+   - git diff --stat HEAD~5..HEAD   (or HEAD if fewer than 5 commits)
 
-   Rules:
-   - Terse. Bullets ≤ 1 line. No journey narrative.
-   - The session digest is the primary source; git signals corroborate it. Do NOT
-     omit real work just because it never reached a commit.
-   - Fill Experiments only if the signals clearly involve a run, eval, or sweep. Otherwise "N/A".
-   - Findings = conclusions or hypothesis updates, not a recap of commits.
-   - Next = at most 3 bullets, concrete.
-   - Read at most 3 changed files if needed to disambiguate a commit or digest line.
-   - Output only the saved path; do not echo the report back.
-   ```
+2. Session digest — if TRANSCRIPT is not "none", extract today's conversation
+   with the self-contained command below (substitute TRANSCRIPT and DATE). It
+   depends only on python3 — no bundled file. Run it EXACTLY, python lines flush
+   to the left margin:
 
-4. **Sync to Notion as a dated child page.** First resolve the **parent page** — check these sources in order, first decision wins:
-   1. Project-local: `$ROOT/.claude/daily-report-notion.txt`
-   2. Global: `notion-page.txt` next to this SKILL.md
-   In each file the value is the first line that is not blank and not starting with `#`:
-   - a real URL/ID → that is the parent page; proceed to sync.
-   - `DISABLED` → Notion sync is intentionally off here; skip silently (no message needed).
-   - `NOT_CONFIGURED`, or the file is missing → not set; fall through to the next source.
-   If **neither file decides it** (both unset), **ask the user once**: "Notion parent page URL for this project? (paste a URL, or say `skip` to disable Notion sync for this project)".
-   - URL given → strip any `?source=...` tracking query, write the clean URL to `$ROOT/.claude/daily-report-notion.txt`, then sync to it.
-   - `skip` → write `DISABLED` to `$ROOT/.claude/daily-report-notion.txt` so this project is never asked again, and skip the sync.
-   Once a parent page is resolved: confirm Notion MCP tools are available — tool names prefixed `mcp__claude_ai_Notion__` (the claude.ai-managed connector, normal case) or `mcp__notion__` (a manually-added server). If neither is present, tell the user to enable the Notion connector (claude.ai → Settings → Connectors, then `/mcp` to authenticate) and skip the sync this run.
-   - **Child page title**: `<DATE> — <PROJECT>` (e.g. `2026-05-20 — dotfiles`). Date-led so pages sort chronologically; the project suffix avoids title collisions when several projects share one parent.
-   - **Child page content**: the markdown body of `$OUT` **minus its leading `# Daily Report — DATE` line** — the Notion page title already carries the date and renders as the page heading, so do not duplicate it in the content. Pass the rest as-is; the hosted Notion MCP converts markdown to blocks server-side, do NOT pre-convert.
-   - Check whether a child page with that exact title already exists under the parent (`notion-search` scoped to the parent via `page_url`):
-     - **None** → create it: `notion-create-pages` with `parent: {"type":"page_id","page_id":<parent>}`, `properties: {"title":<title>}`, `content: <body>`.
-     - **Exists** → reuse the overwrite/append decision from Step 1: overwrite → `notion-update-page` `command: "replace_content"`; append → `notion-update-page` `command: "insert_content"`, `position: {"type":"end"}`.
-   - If a call fails with "object not found" (or similar permission error): the parent page is not accessible to the connector. Tell the user to re-run the Notion OAuth and grant access to the parent page. Do not retry blindly.
+python3 - "TRANSCRIPT" "DATE" <<'PY'
+import sys, json
+from datetime import datetime
+path, date = sys.argv[1], sys.argv[2]
+out = []
+try:
+    fh = open(path)
+except OSError as e:
+    sys.exit("transcript open failed: %s" % e)
+for line in fh:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+    except ValueError:
+        continue
+    try:
+        lo = datetime.fromisoformat((d.get("timestamp") or "").replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        continue
+    if lo.strftime("%Y-%m-%d") != date:
+        continue
+    t = d.get("type")
+    if t not in ("user", "assistant"):
+        continue
+    c = (d.get("message") or {}).get("content")
+    if isinstance(c, str):
+        xs = [c]
+    elif isinstance(c, list):
+        xs = [b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text"]
+    else:
+        xs = []
+    tx = "\n".join(x for x in xs if x).strip()
+    if not tx:
+        continue
+    if t == "user" and tx.lstrip().startswith("<"):
+        continue
+    if len(tx) > 1500:
+        tx = tx[:1500] + " ...[truncated]"
+    out.append("[%s %s]\n%s" % (lo.strftime("%H:%M"), t.upper(), tx))
+print("\n\n".join(out) if out else "(no entries for %s)" % date)
+PY
 
-5. **Report** to the user (one line): the saved local path, plus Notion sync status (synced / off / failed-with-reason). Do not paste the report contents.
+   - Distill the printed output into the session digest — terse and factual:
+     tasks tackled, decisions made, problems diagnosed and their root causes,
+     things learned, what is left open. No narrative. THIS IS THE PRIMARY
+     SOURCE for the report.
+   - FALLBACK: if python3 is unavailable or the command errors out, skip the
+     transcript entirely, draft from the git signals only, and add one line to
+     the report (under Findings or Next) noting "session digest unavailable
+     this run — report based on git activity only".
+
+3. Draft — read TEMPLATE, copy its structure verbatim, fill it, write to OUT
+   (mkdir -p the parent dir first; overwrite if it exists):
+   - Replace {{DATE}}, {{PROJECT}}, {{BRANCH}}.
+   - Build sections from the session digest; git signals only corroborate. Do
+     NOT omit real work just because it never reached a commit.
+   - Terse: bullets <= 1 line. Experiments = "N/A" unless a run / eval / sweep
+     clearly happened. Findings = conclusions, not a commit recap. Next = <= 3
+     concrete bullets. Empty sections → "None" / "N/A", never pad. Do not invent
+     metrics, experiments, or blockers.
+
+4. Notion sync — skip entirely if NOTION_PARENT is "DISABLED". Otherwise:
+   - Confirm Notion MCP tools exist (names prefixed mcp__claude_ai_Notion__ or
+     mcp__notion__). If absent, skip and report "Notion: MCP unavailable".
+   - Child page title = "<DATE> — <PROJECT>" (e.g. "2026-05-20 — franka").
+   - Child page content = the report body MINUS its leading "# Daily Report —"
+     line (the Notion page title already carries the date). Pass markdown as-is;
+     the hosted Notion MCP converts it to blocks server-side.
+   - notion-search under NOTION_PARENT for a child page with that exact title:
+     - EXISTS → notion-update-page on it, command "replace_content", new_str = body.
+     - NONE → notion-create-pages with parent {"type":"page_id","page_id":NOTION_PARENT},
+       properties {"title": <title>}, content = body. Then place it at the TOP:
+       notion-update-page on NOTION_PARENT with command "insert_content",
+       position {"type":"start"}, content '<page url="<new-child-url>"><title></page>'.
+       (Inserting a <page> block with an existing child URL MOVES that child;
+       position start puts the newest report first. Verified mechanism.)
+   - On "object not found" / permission error: stop, report that NOTION_PARENT is
+     not shared with the connector. Do not retry blindly.
+
+5. Return ONE line: the saved OUT path + Notion status
+   (synced / off / "MCP unavailable" / "failed: <reason>").
+```
 
 ## Notes
 
-- The local report is per-project (`<git root>/.claude/daily-reports/`). On Notion, the parent page is resolved per-project: `$ROOT/.claude/daily-report-notion.txt` (this project's own page) overrides the global `notion-page.txt` (shared aggregate). A project with no local file falls back to the global parent; reports there are still distinguished by the `— <PROJECT>` title suffix.
-- If not in a git repo, fall back to `$(pwd)/.claude/daily-reports/` and tell the user.
-- The user may pass extra context (e.g. "also include the perception eval results"). Forward it verbatim into the subagent prompt — don't summarize it away.
-- Don't commit the report. The user can decide whether `.claude/daily-reports/` is gitignored or tracked.
-- Notion sync is best-effort: a failed sync never blocks the local report. Report the failure and move on.
+- Local report: `<git root>/.claude/daily-reports/YYYY-MM-DD.md`. The skill does
+  not commit it; gitignore or track it as you prefer.
+- Notion: `daily-report-notion.txt` (project-local) overrides `notion-page.txt`
+  (global). Each report is a `<DATE> — <PROJECT>` child page; the newest is moved
+  to the top of the parent so the parent reads newest-first.
+- Re-running on the same day overwrites the local file and replaces the existing
+  Notion child page — it refreshes, it does not duplicate.
+- Notion sync is best-effort: a failed sync never blocks the local report.
+- The session digest is sourced from the on-disk transcript (not live context),
+  which is what lets the whole job run in the background. It captures the session
+  up to dispatch time.
