@@ -144,8 +144,14 @@ PY
      metrics, experiments, or blockers.
 
 4. Notion sync — skip entirely if NOTION_PARENT is "DISABLED". Otherwise:
-   - Confirm Notion MCP tools exist (names prefixed mcp__claude_ai_Notion__ or
-     mcp__notion__). If absent, skip and report "Notion: MCP unavailable".
+   - Select the connector. Multiple Notion MCP connectors may be present (tool
+     names like mcp__claude_ai_Notion__*, mcp__notion__*, mcp__notion-personal__*),
+     each authorized for a DIFFERENT workspace. Enumerate every tool matching
+     mcp__*notion*__notion-fetch, call each on NOTION_PARENT, and pick the
+     connector whose fetch succeeds — use that connector's prefix for ALL notion-*
+     calls below. If no Notion connector exists at all, skip and report "Notion:
+     MCP unavailable". If connectors exist but none can fetch NOTION_PARENT, skip
+     and report "Notion: NOTION_PARENT unreachable (wrong workspace)".
    - Child page title = "<DATE> — <PROJECT>" (e.g. "2026-05-20 — franka").
    - Child page content = the report body MINUS its leading "# Daily Report —"
      line (the Notion page title already carries the date). Pass markdown as-is;
