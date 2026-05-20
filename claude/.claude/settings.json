@@ -4,7 +4,10 @@
   },
   "includeCoAuthoredBy": false,
   "permissions": {
-    "defaultMode": "auto"
+    "defaultMode": "auto",
+    "allow": [
+      "mcp__claude_ai_Notion"
+    ]
   },
   "hooks": {
     "PostToolUse": [
@@ -30,7 +33,8 @@
     "typescript-lsp@claude-plugins-official": true
   },
   "alwaysThinkingEnabled": true,
+  "effortLevel": "xhigh",
   "theme": "dark-ansi",
   "skipAutoPermissionPrompt": true,
-  "effortLevel": "xhigh"
+  "agentPushNotifEnabled": true
 }
