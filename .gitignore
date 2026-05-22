@@ -22,7 +22,10 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Local overrides (e.g., .bashrc.local)
+# Local overrides (e.g., .bashrc.local, .zshrc.local)
 *.local
 # But allow .local directories for stow packages
 !*/.local/
+
+# Hammerspoon clipimg (macOS): real host map is local-only (hostnames are sensitive)
+hammerspoon/.hammerspoon/clipimg-hosts.lua

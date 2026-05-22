@@ -1,0 +1,9 @@
+-- Copy this file to ~/.hammerspoon/clipimg-hosts.lua and edit.
+-- Keys   : the short hostname as it appears in the focused terminal's window
+--          title (remote bashrc/tmux sets it to `hostname -s`).
+-- Values : the ~/.ssh/config Host alias to ssh into.
+return {
+  -- ["robot-dev7"]        = "robot_dev7",
+  -- ["airoa-dev-5070-01"] = "airoa01",
+  -- ["airoa-dev-5070-02"] = "airoa02",
+}

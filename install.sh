@@ -9,16 +9,37 @@
 #   5. Pre-create top-level dirs so stow folds at file-level (~/.claude, ~/.config, ~/.local)
 #   6. Backup any pre-existing real files/dirs that would conflict with stow
 #      (timestamped .bak.<TS>; never overwrites prior backups)
-#   7. Restow every package (`stow -R -t ~ <pkg>`) — surviving partial conflicts per package
+#   7. Restow the OS-appropriate packages (common + per-OS), surviving partial conflicts
 #   8. Install tpm (if missing)
 #
 # Failures in any step are logged but do NOT abort the rest of the script.
 # Existing symlinks are left untouched (treated as already-installed).
+#
+# Single-branch / cross-platform: this repo holds macOS and Linux configs side
+# by side. The OS is detected here and only the relevant stow packages are
+# linked — bash vs zsh, and the macOS-only tools (skhd/yabai/hammerspoon), must
+# never land on the wrong OS.
 
 set -u
 
 DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
 TS="$(date +%Y%m%d-%H%M%S)"
+
+# OS detection — drives stow package and pixi tool selection below.
+case "$(uname -s)" in
+  Darwin) OS_KIND=macos ;;
+  Linux)  OS_KIND=linux ;;
+  *)      OS_KIND=unknown ;;
+esac
+
+# Stow packages: shared set + an OS-specific set. Deliberately NOT every dir.
+COMMON_PKGS=(claude nvim tmux)
+case "$OS_KIND" in
+  macos) OS_PKGS=(zsh skhd yabai hammerspoon starship) ;;
+  linux) OS_PKGS=(bash pueue clipimg) ;;
+  *)     OS_PKGS=() ;;
+esac
+STOW_PKGS=("${COMMON_PKGS[@]}" "${OS_PKGS[@]}")
 
 log()  { printf '\033[34m[*]\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m[ok]\033[0m %s\n' "$*"; }
@@ -55,10 +76,14 @@ ensure_pixi_tools() {
     return
   fi
   local tools=(
-    stow tmux=3.4 git curl jq bc xclip nvim nodejs
+    stow tmux=3.4 git curl jq bc nvim nodejs
     stylua black isort clang-format python=3.11
-    pueue ripgrep pre-commit
+    ripgrep pre-commit
   )
+  # Linux-only extras (xclip: X11 clipboard; pueue: task queue used on Linux).
+  if [ "$OS_KIND" = linux ]; then
+    tools+=(xclip pueue)
+  fi
   log "Installing pixi global tools (idempotent per tool)"
   for t in "${tools[@]}"; do
     if pixi global install "$t" >/dev/null 2>&1; then
@@ -139,22 +164,30 @@ backup_if_real() {
 
 backup_existing_targets() {
   log "Backing up pre-existing real files (symlinks left alone)"
-  # bash
-  backup_if_real "$HOME/.bashrc"
-  backup_if_real "$HOME/.inputrc"
-  # tmux
+  # Common: tmux
   backup_if_real "$HOME/.tmux.conf"
-  # nvim
+  # Common: nvim
   backup_if_real "$HOME/.config/nvim"
-  # pueue
-  backup_if_real "$HOME/.config/pueue"
-  # claude (file-level under ~/.claude/)
+  # Common: claude (file-level under ~/.claude/)
   for f in CLAUDE.md settings.json statusline.js; do
     backup_if_real "$HOME/.claude/$f"
   done
   for d in commands skills hooks; do
     backup_if_real "$HOME/.claude/$d"
   done
+  # OS-specific targets
+  if [ "$OS_KIND" = linux ]; then
+    backup_if_real "$HOME/.bashrc"
+    backup_if_real "$HOME/.inputrc"
+    backup_if_real "$HOME/.config/pueue"
+    backup_if_real "$HOME/.local/bin/clipimg-recv"
+  elif [ "$OS_KIND" = macos ]; then
+    backup_if_real "$HOME/.zshrc"
+    backup_if_real "$HOME/.config/skhd"
+    backup_if_real "$HOME/.config/yabai"
+    backup_if_real "$HOME/.config/starship.toml"
+    backup_if_real "$HOME/.hammerspoon"
+  fi
 }
 
 #------------------------------------------------------------------------------
@@ -165,21 +198,16 @@ run_stow() {
     warn "stow not installed; cannot symlink (install pixi tools first)"
     return
   fi
-  log "Stowing packages from $DOTFILES_DIR"
+  log "Stowing $OS_KIND packages: ${STOW_PKGS[*]}"
   if ! cd "$DOTFILES_DIR"; then
     err "cd $DOTFILES_DIR failed"
     return
   fi
-  shopt -s nullglob
-  local had_any=0
-  for pkg_dir in */; do
-    local pkg="${pkg_dir%/}"
-    # Skip non-package directories
-    case "$pkg" in
-      .archive|.git|.submodules) continue ;;
-    esac
-    [ -d "$pkg" ] || continue
-    had_any=1
+  for pkg in "${STOW_PKGS[@]}"; do
+    if [ ! -d "$pkg" ]; then
+      warn "package '$pkg' not found in $DOTFILES_DIR; skipping"
+      continue
+    fi
     # -R: restow (rebuild symlinks for this package, idempotent)
     if stow -R -t "$HOME" "$pkg" 2>/tmp/stow-${pkg}.err; then
       ok "stow $pkg"
@@ -187,8 +215,6 @@ run_stow() {
       warn "stow $pkg had conflicts; see /tmp/stow-${pkg}.err and resolve manually"
     fi
   done
-  shopt -u nullglob
-  [ $had_any -eq 0 ] && warn "no stow packages found in $DOTFILES_DIR"
 }
 
 #------------------------------------------------------------------------------
@@ -229,11 +255,13 @@ main() {
   ensure_tpm
 
   log "Done."
+  local rc=".bashrc"
+  [ "$OS_KIND" = macos ] && rc=".zshrc"
   echo "  Next steps:"
-  echo "    - Open a new shell (or 'source ~/.bashrc') to pick up PATH changes"
+  echo "    - Open a new shell (or 'source ~/$rc') to pick up PATH changes"
   echo "    - Launch nvim once to install plugins via lazy.nvim + Mason"
   echo "    - In tmux, press prefix+I (Ctrl-p I) to install tpm plugins"
-  echo "    - Set machine-local secrets in ~/.bashrc.local (ANTHROPIC_API_KEY etc.)"
+  echo "    - Set machine-local secrets in ~/$rc.local (ANTHROPIC_API_KEY etc.)"
 }
 
 main "$@"
