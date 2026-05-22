@@ -356,6 +356,11 @@ $intent"
 # Utility functions
 mkcd() { mkdir -p "$1" && cd "$1"; }
 
+# Fallback Ollama: the CUDA build on :11435 used by the Claude Code fallback.
+# Bare `ollama` is the old system binary/server (:11434); this targets the
+# right binary + host. See dotfiles/docs/claude-code-fallback.md.
+ollama-fb() { OLLAMA_HOST=127.0.0.1:11435 "$HOME/.ollama-cuda/bin/ollama" "$@"; }
+
 extract() {
   if [ -z "$1" ]; then
     echo "Usage: extract <archive-file>"
