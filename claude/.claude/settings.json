@@ -4,10 +4,10 @@
   },
   "includeCoAuthoredBy": false,
   "permissions": {
-    "defaultMode": "auto",
     "allow": [
       "mcp__claude_ai_Notion"
-    ]
+    ],
+    "defaultMode": "auto"
   },
   "hooks": {
     "PostToolUse": [
@@ -35,6 +35,6 @@
   "alwaysThinkingEnabled": true,
   "effortLevel": "xhigh",
   "theme": "dark-ansi",
-  "skipAutoPermissionPrompt": true,
-  "agentPushNotifEnabled": true
+  "agentPushNotifEnabled": true,
+  "skipAutoPermissionPrompt": true
 }

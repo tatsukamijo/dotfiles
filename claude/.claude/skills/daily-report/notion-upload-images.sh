@@ -35,10 +35,17 @@ mime_of() {
   esac
 }
 
-# blocks_json <- every block on the page, descending into nested blocks
-# (topic bullets -> sub-bullets) so anchors can match a sub-bullet at any depth.
+# Build a compact {id,text} index of every block on the page, descending into
+# nested blocks (topic bullets -> sub-bullets) so anchors can match at any
+# depth. The index is NDJSON in a temp file: accumulating the full block JSON
+# in a shell variable and passing it back to jq via --argjson overflows
+# ARG_MAX on a large page, which silently breaks every anchor lookup.
+index_file=""
+cleanup() { [ -n "$index_file" ] && rm -f "$index_file"; }
+trap cleanup EXIT
+
 fetch_blocks() {
-  blocks_json="[]"
+  index_file="$(mktemp)"
   _fetch_children "$page_id"
 }
 _fetch_children() {
@@ -49,7 +56,8 @@ _fetch_children() {
     body="$(curl -sS "${auth[@]}" "$url")"
     [ "$(jq -r '.object // empty' <<<"$body")" = "error" ] && \
       die "list blocks failed: $(jq -rc '.message // .' <<<"$body")"
-    blocks_json="$(jq -n --argjson a "$blocks_json" --argjson b "$body" '$a + $b.results')"
+    jq -c '.results[] | {id, text: ((.[.type].rich_text // []) | map(.plain_text) | join(""))}' \
+      <<<"$body" >> "$index_file"
     for cid in $(jq -r '.results[] | select(.has_children == true and .type != "table") | .id' <<<"$body"); do
       _fetch_children "$cid"
     done
@@ -59,10 +67,12 @@ _fetch_children() {
 }
 
 # id of the first block whose plain text contains $1 (empty if none).
+# Backticks are dropped from the anchor: a caller may copy a phrase spanning an
+# inline-code span, but Notion's stored plain text never carries them.
 anchor_id() {
-  jq -r --arg a "$1" \
-    '[.[] | select(((.[.type].rich_text // []) | map(.plain_text) | join("")) | contains($a))][0].id // empty' \
-    <<<"$blocks_json"
+  jq -rs --arg a "$1" \
+    '($a | gsub("`"; "")) as $a
+     | [.[] | select(.text | contains($a))][0].id // empty' "$index_file"
 }
 
 # upload $1 -> echo file_upload id (empty + non-zero on failure).
