@@ -318,12 +318,21 @@ PY
      Pass the result as-is; the hosted Notion MCP converts it to blocks.
    - notion-search under NOTION_PARENT for a child page with that exact title:
      - EXISTS → notion-update-page on it, command "replace_content", new_str = body.
+       Keep its page URL.
      - NONE → notion-create-pages with parent {"type":"page_id","page_id":NOTION_PARENT},
-       properties {"title": <title>}, content = body. Then place it at the TOP:
-       notion-update-page on NOTION_PARENT with command "insert_content",
-       position {"type":"start"}, content '<page url="<new-child-url>"><title></page>'.
-       (Inserting a <page> block with an existing child URL MOVES that child;
-       position start puts the newest report first. Verified mechanism.)
+       properties {"title": <title>}, content = body. Keep the new page URL it returns.
+   - Move to top — ALWAYS, in BOTH the EXISTS and NONE cases. notion-create-pages
+     appends a new page at the BOTTOM of the parent, so without this step a new
+     report silently lands last; doing it on the EXISTS path too self-heals an
+     earlier run whose move failed. Run notion-update-page on NOTION_PARENT,
+     command "insert_content", position {"type":"start"}, content
+     '<page url="<child-url>"><title></page>'. Inserting a <page> block with an
+     EXISTING child URL MOVES that child to the start — it does not duplicate.
+   - Verify the move — notion-fetch NOTION_PARENT and confirm the FIRST <page> in
+     its content is the child you just synced. If it is not first, run the
+     insert_content move once more. If it is still not first after that retry,
+     add "move-to-top failed" to the Return line. Do NOT skip this check — the
+     move silently failing (new report stuck at the bottom) is a known bug.
    - On "object not found" / permission error: stop, report that NOTION_PARENT is
      not shared with the connector. Do not retry blindly.
    - Figures upload — after the page text is synced and you have the child page
