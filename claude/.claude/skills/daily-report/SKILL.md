@@ -206,7 +206,8 @@ PY
      → fail". Never invent a bar that was not actually pre-registered; a run
      with no prior bar simply reports its result.
    - Findings confidence markers — every Findings top-level (conclusion) bullet,
-     both tracks, ends with a plain-bracket tag (no backticks): `[confirmed]`
+     both tracks, BEGINS with a plain-bracket tag (no backticks), right after
+     the `- ` (e.g. `- [refuted-prior] The v6 model does use dt.`): `[confirmed]`
      (reproduced, ≥2 independent runs, or strong multi-metric evidence),
      `[preliminary]` (n=1 / single observation / not yet reproduced), or
      `[refuted-prior]` (overturns a conclusion or hypothesis from an earlier
@@ -248,11 +249,15 @@ PY
      Yesterday's Next with no prior report → `N/A`; Reproducibility with no runs
      → `None`. Empty subsections → "None" / "N/A", never pad. Do not invent
      metrics, runs, or blockers.
-   - Figures — collect today's analysis images: *.png / *.jpg / *.jpeg files
-     shown as new ("??") or modified ("M") in git status that illustrate a
-     result (usually under a figures/ dir). Cap at 6. Each figure goes next to
-     the result it supports — like a figure in a paper, never a figures section
-     and never an end-of-page dump.
+   - Figures — collect the day's analysis images (*.png / *.jpg / *.jpeg) that
+     illustrate a result. Source them from the SESSION DIGEST — figures the
+     day's work generated or saved (a plotting script that wrote a file, a path
+     named in the conversation). Do NOT rely on `git status`: analysis figure
+     dirs (e.g. `figures/`) are routinely gitignored, so an untracked-files
+     scan misses them. Resolve each to an ABSOLUTE path and confirm the file
+     exists on disk before using it; drop any that do not. Cap at 6. Each
+     figure goes next to the result it supports — like a figure in a paper,
+     never a figures section and never an end-of-page dump.
      Placement — on its own line, directly below the Findings / Progress
      SUB-BULLET it illustrates, write a Markdown image line:
        ![<CAPTION>](<absolute image path>)
@@ -287,8 +292,8 @@ PY
           </callout>
         This is the ONLY callout used to highlight a result — never wrap an
         individual Finding in a callout.
-     d. Color each Findings conclusion bullet's TRAILING confidence tag inline
-        (only the trailing tag — not the same word used mid-sentence):
+     d. Color each Findings conclusion bullet's LEADING confidence tag inline
+        (the tag right after `- ` — not the same word if it recurs mid-sentence):
         `[confirmed]` → `<span color="green">[confirmed]</span>`,
         `[refuted-prior]` → `<span color="orange">[refuted-prior]</span>`,
         `[preliminary]` → `<span color="gray">[preliminary]</span>`.

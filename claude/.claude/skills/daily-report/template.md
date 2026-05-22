@@ -17,7 +17,7 @@
        はなく takeaway そのもの）、その下に sub-bullet で根拠・詳細を1行ずつ。
        フラットな羅列にしない。結論が1行で完結するなら sub-bullet 無しでよい。
      ・TL;DR は header の1行（最大2行）。Findings から最後に蒸留して書く。
-     ・Findings の top-level bullet 末尾に確信度 [confirmed]/[preliminary]/[refuted-prior]。
+     ・Findings の top-level bullet 先頭に確信度 [confirmed]/[preliminary]/[refuted-prior]。
      ・数値・条件比較は Findings の sub-bullet へ（run名・条件を明記）。文中に散らさない。
        事前設定の閾値があった run は、その達成可否(pass/fail)も sub-bullet に書く。
      ・該当が無いトラックは "None"。pad しない。
@@ -45,10 +45,10 @@
 ## 🔍 Findings
 
 **🔬 Research**
-- conclusion [confirmed | preliminary | refuted-prior]
+- [confirmed | preliminary | refuted-prior] conclusion
   - detail
 **🛠️ Engineering**
-- conclusion [confirmed | preliminary | refuted-prior]
+- [confirmed | preliminary | refuted-prior] conclusion
   - detail
 
 ## 🧠 Hypotheses
