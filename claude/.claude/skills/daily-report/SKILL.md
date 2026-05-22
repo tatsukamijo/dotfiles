@@ -136,12 +136,21 @@ PY
 
 3. Draft — read TEMPLATE, copy its structure verbatim, fill it, write to OUT
    (mkdir -p the parent dir first; overwrite if it exists):
+   - Previous report — find the most recent file in $ROOT/.claude/daily-reports/
+     matching *.md whose date is strictly older than DATE (ignore today's own
+     OUT file on a re-run). If one exists, read its `## ⏭️ Next` section and its
+     `## 🧠 Hypotheses` table — this single read feeds both the Yesterday's Next
+     reconciliation and the Hypotheses carry-over below. None → first run, skip
+     both (their sections become `N/A`).
    - Replace {{DATE}}, {{PROJECT}}, {{BRANCH}}.
    - Build sections from the session digest; git signals only corroborate. Do
      NOT omit real work just because it never reached a commit.
-   - Every section carries a 🔬 Research track and a 🛠️ Engineering track, marked
-     by the **🔬 Research** / **🛠️ Engineering** bold labels — keep both labels and
-     classify each item. Research = hypotheses, experiment design, results and
+   - Six sections carry a 🔬 Research track and a 🛠️ Engineering track — Objective,
+     Progress, Experiments, Findings, Issues / Blockers, Next — marked by the
+     **🔬 Research** / **🛠️ Engineering** bold labels; keep both labels and classify
+     each item. The other four sections (Hypotheses, Decisions, Yesterday's Next,
+     Reproducibility) are single tables / checklists / lists — no R/E split, no
+     track labels. Research = hypotheses, experiment design, results and
      their interpretation, scientific conclusions, methodology calls. Engineering
      = code, infrastructure, tooling, configs, pipeline plumbing, build/deploy,
      bug fixes. An item with both facets is split — research facet under Research,
@@ -167,10 +176,51 @@ PY
      across conditions (a metric at several settings, an ablation, a sweep) goes
      into the Experiments table as rows — never as numbers buried in a sentence.
      Findings then state the conclusion and may point at the table.
+   - Experiments tables — columns `target` and `verdict` sit between `metric` and
+     `note`. `target` = the threshold pre-registered for the run before its
+     result was seen (success-rate bar, val-loss ceiling, p-value, speedup goal);
+     `—` if none was set — never invent one. `verdict` = `pass` / `fail` against
+     that target; `—` when there is no target.
+   - Findings confidence markers — every Findings top-level (conclusion) bullet,
+     both tracks, ends with a plain-bracket tag (no backticks): `[confirmed]`
+     (reproduced, ≥2 independent runs, or strong multi-metric evidence),
+     `[preliminary]` (n=1 / single observation / not yet reproduced), or
+     `[refuted-prior]` (overturns a conclusion or hypothesis from an earlier
+     report). Precedence: if it overturns a past claim use `[refuted-prior]`,
+     else pick `[confirmed]` / `[preliminary]` by evidence strength. Sub-bullets
+     are never tagged.
+   - Hypotheses ledger — the `## 🧠 Hypotheses` table (columns hypothesis ·
+     status · evidence): `status` ∈ `open` / `supported` / `refuted`; `evidence`
+     cites the run / finding and the date the status last changed. Carry over
+     every still-relevant row from the previous report's Hypotheses table (from
+     the previous-report read), update its status where today's work bears on it,
+     and add rows for hypotheses raised today. A status flip (e.g. `open` →
+     `refuted`) must also surface as a `[refuted-prior]` Finding — the two are
+     coupled. No hypotheses → `N/A`.
+   - Decisions — the `## 🧭 Decisions` table (columns decision · alternatives ·
+     rationale). Log only real decisions: a path taken over a *named*
+     alternative. Routine actions are not decisions. None → `N/A`.
+   - Yesterday's Next — reconcile the previous report's `## ⏭️ Next` (from the
+     previous-report read) into the `## 🔄 Yesterday's Next` checklist, one line
+     per prior Next item: `[x]` done (note where it closed), `[~]` partial (note
+     what remains), `[ ]` carried over. Every `[~]` / `[ ]` item must also appear
+     in today's `## ⏭️ Next` so nothing is silently dropped. No previous report
+     → `N/A`.
+   - Reproducibility appendix — the `## 📌 Reproducibility` section collects one
+     compact bullet per run that appears in either Experiments table, NOT in the
+     table itself (the appendix keeps the body concise):
+       - <run label> — commit `<sha>` · ckpt `<path>` · seed `<n>` · ds `<version>` · pueue `<id>`
+     `<run label>` matches that row's `run` / `benchmark` cell. Omit any field
+     that does not apply. No runs → `None`.
+   - TL;DR — write it LAST, after every section is drafted: a one-line abstract
+     (may wrap to two, never longer) distilled from Findings — the single most
+     important result plus the current state — on the `**TL;DR** — …` header
+     line. Quiet day → `**TL;DR** — quiet day; no runs or commits.`
    - Terse: Experiments = "N/A" unless a run / eval / sweep clearly happened.
      Findings = conclusions, not a commit recap. Next = <= 3 topics per track.
-     Empty subsections → "None" / "N/A", never pad. Do not invent metrics,
-     experiments, or blockers.
+     Hypotheses / Decisions empty → `N/A`; Yesterday's Next with no prior report
+     → `N/A`; Reproducibility with no runs → `None`. Empty subsections →
+     "None" / "N/A", never pad. Do not invent metrics, experiments, or blockers.
    - Figures — also collect today's analysis images: *.png / *.jpg / *.jpeg
      files shown as new ("??") or modified ("M") in git status that illustrate
      a result (usually under a figures/ dir). Cap at 6. Do NOT add a figures
@@ -180,7 +230,10 @@ PY
            markers, unique on the page) copied from the Experiments/Findings
            sub-bullet the figure illustrates;
        (b) the ABSOLUTE image path;
-       (c) CAPTION — a one-line description of what the figure shows.
+       (c) CAPTION — one line stating what to CONCLUDE from the figure, not what
+           it depicts: the takeaway with the key number. Not "DTW distance, ph1
+           vs ph2 across frequencies" but "DTW: no ph1/ph2 trajectory difference
+           at any frequency (p ≥ 0.08)".
      Write that supporting sub-bullet normally; the image is nested under it in
      step 4. If there are no figures, skip this.
 
