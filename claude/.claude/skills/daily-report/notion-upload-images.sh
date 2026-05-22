@@ -8,7 +8,9 @@
 #
 #   <anchor>  : a short verbatim PLAIN-TEXT substring of the report line the
 #               figure belongs under (no markdown markers, unique on the page).
-#               "" or "END" => append at the end of the page.
+#               "" or "END" => append at the end of the page. A non-empty
+#               anchor that matches nothing => the figure is SKIPPED (nothing
+#               inserted), so the caller can fix the anchor and re-run cleanly.
 #   <image>   : path to a .png / .jpg / .jpeg / .gif / .webp file.
 #   <caption> : one-line figure caption ("" => use the filename).
 #
@@ -99,20 +101,23 @@ while [ "$#" -ge 3 ]; do
   name="$(basename "$img")"
   [ -n "$caption" ] || caption="$name"
 
-  uid="$(upload "$img")" || { bad=$((bad + 1)); continue; }
-
-  # Parent of the image block. Default = the page (image lands at page end).
-  # With an anchor, parent = the matched block, so the image NESTS under that
-  # bullet (renders indented beneath it, like a figure under its discussion).
+  # Resolve the target parent BEFORE uploading. Default = the page (image lands
+  # at page end) — used only for an explicit empty / "END" anchor. A non-empty
+  # anchor that matches nothing is an ERROR: skip the figure entirely rather
+  # than dump it at page end. The caller fixes the anchor and re-runs; since
+  # nothing was inserted, the re-run leaves no stray or duplicate behind.
   parent="$page_id"; where="page end"
   if [ -n "$anchor" ] && [ "$anchor" != "END" ]; then
     aid="$(anchor_id "$anchor")"
     if [ -n "$aid" ]; then
       parent="$aid"; where="nested under $aid"
     else
-      echo "notion-upload: anchor not found ('$anchor') for $name — appending at page end" >&2
+      echo "notion-upload: anchor not found ('$anchor') for $name — SKIPPED, nothing inserted (fix the anchor and re-run)" >&2
+      bad=$((bad + 1)); continue
     fi
   fi
+
+  uid="$(upload "$img")" || { bad=$((bad + 1)); continue; }
 
   block="$(jq -n --arg id "$uid" --arg cap "$caption" \
     '{type:"image",image:{type:"file_upload",file_upload:{id:$id},caption:[{type:"text",text:{content:$cap}}]}}')"

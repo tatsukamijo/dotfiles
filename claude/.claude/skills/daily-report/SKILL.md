@@ -255,8 +255,12 @@ PY
      named in the conversation). Do NOT rely on `git status`: analysis figure
      dirs (e.g. `figures/`) are routinely gitignored, so an untracked-files
      scan misses them. Resolve each to an ABSOLUTE path and confirm the file
-     exists on disk before using it; drop any that do not. Cap at 6. Each
-     figure goes next to the result it supports — like a figure in a paper,
+     exists on disk before using it; drop any that do not. VIEW each image
+     (read the file — it is viewable) to learn what it actually depicts: place
+     it under the finding it depicts and caption it from the image itself,
+     never from the finding's text alone — never caption a figure as something
+     it does not show. Cap at 6. Each figure goes next to the result it
+     supports — like a figure in a paper,
      never a figures section and never an end-of-page dump.
      Placement — on its own line, directly below the Findings / Progress
      SUB-BULLET it illustrates, write a Markdown image line:
@@ -292,11 +296,16 @@ PY
           </callout>
         This is the ONLY callout used to highlight a result — never wrap an
         individual Finding in a callout.
-     d. Color each Findings conclusion bullet's LEADING confidence tag inline
-        (the tag right after `- ` — not the same word if it recurs mid-sentence):
-        `[confirmed]` → `<span color="green">[confirmed]</span>`,
-        `[refuted-prior]` → `<span color="orange">[refuted-prior]</span>`,
-        `[preliminary]` → `<span color="gray">[preliminary]</span>`.
+     d. Color the LEADING confidence tag of each Findings conclusion bullet, and
+        ONLY the bracketed tag — never the bullet text. Pure token substitution:
+        wrap exactly the bracket token in a span so `</span>` sits immediately
+        after the tag's closing `]`, leaving the rest of the line outside it:
+          `- [confirmed] <text>`     → `- <span color="green">[confirmed]</span> <text>`
+          `- [refuted-prior] <text>` → `- <span color="orange">[refuted-prior]</span> <text>`
+          `- [preliminary] <text>`   → `- <span color="gray">[preliminary]</span> <text>`
+        Do NOT extend the span past the `]`; do NOT put a block-level
+        `{color=...}` attribute on the bullet — either of those colors the whole
+        line. Leave the same word alone where it recurs mid-sentence.
      e. If Reproducibility has run bullets, make it collapsible: its heading
         becomes `## 📌 Reproducibility {toggle="true"}` and every bullet under it
         is indented one extra tab so it nests in the toggle. Just "None" → leave
@@ -329,9 +338,14 @@ PY
      Args after the page id are (anchor, image, caption) triples, one per figure
      — quote each, they contain spaces. The script uploads each image and nests
      it as an image block UNDER the first block whose text contains the anchor;
-     it prints "nested under ..." on a hit and "anchor not found ... appending
-     at page end" on a miss. A miss means the anchor was wrong — pick a cleaner
-     phrase from the same sub-bullet; if any figure still misses, say so in the
+     it prints "nested under ..." on a hit. On an anchor miss it SKIPS that
+     figure — inserts NOTHING, no page-end dump — and prints "anchor not found
+     ... SKIPPED". A miss means the anchor was wrong: re-run the script for ONLY
+     the missed figures with a corrected anchor (a cleaner ASCII phrase from the
+     same sub-bullet); since the miss inserted nothing, the re-run leaves no
+     stray or duplicate. Never hand-place a missed figure through the Notion MCP
+     — that is what leaves `attachment:` text artifacts on the page. If a figure
+     still misses after a corrected anchor, leave it out and say so in the
      Return line ("figures: N anchor misses"). NOTION_TOKEN (a Notion
      internal-integration token) must be in the environment. If it is unset the
      script prints "NOTION_TOKEN not set" — then report "figures: NOTION_TOKEN
