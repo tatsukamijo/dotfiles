@@ -1,29 +1,68 @@
 # Daily Report — {{DATE}}
 
-**Project:** {{PROJECT}}
-**Branch:** {{BRANCH}}
+**{{PROJECT}}**  ·  `{{BRANCH}}`
 
-## Objective
-<!-- 今日取り組んだテーマ。1〜2行。 -->
+---
 
-## Progress
-<!-- 完了した作業。bullet で簡潔に。コミットや成果物にリンクできるなら付ける。 -->
+<!-- 記入ガイド:
+     ・各セクションを 🔬 Research / 🛠️ Engineering の2トラックに分割。両ラベルとも必ず残す。
+       🔬 Research    = 仮説・実験設計・結果とその解釈・科学的結論・手法上の判断。
+       🛠️ Engineering = コード・基盤・ツール・設定・パイプライン・ビルド/デプロイ・バグ修正。
+     ・bullet は1行。結論だけ書く（経緯は書かない）。
+     ・該当が無いトラックは "None"（Experiments のみ "N/A"）。決して pad しない。 -->
+
+## 🎯 Objective
+
+**🔬 Research**
+-
+**🛠️ Engineering**
 -
 
-## Experiments
-<!-- 走らせた実験/評価。configと結果を一行ずつ。無ければ「N/A」。 -->
+## 🚀 Progress
+
+**🔬 Research**
+-
+**🛠️ Engineering**
+-
+
+## 🧪 Experiments
+
+**🔬 Research**
+
 | run | config | metric | note |
 |---|---|---|---|
 |  |  |  |  |
 
-## Findings
-<!-- 観察できた事実・仮説の更新。journey ではなく結論だけ。 -->
+**🛠️ Engineering**
+
+| benchmark | setup | metric | note |
+|---|---|---|---|
+|  |  |  |  |
+
+## 🔍 Findings
+
+**🔬 Research**
+-
+**🛠️ Engineering**
 -
 
-## Issues / Blockers
-<!-- 詰まっている点。原因が分かっていれば1行添える。無ければ「None」。 -->
+## 🚧 Issues / Blockers
+
+**🔬 Research**
+-
+**🛠️ Engineering**
 -
 
-## Next
-<!-- 明日やること。1〜3個。 -->
+## ⏭️ Next
+
+**🔬 Research**
+-
+**🛠️ Engineering**
+-
+
+## 📊 Figures
+
+<!-- 今日の解析画像を `- <ROOT からの相対パス> — <一行説明>` で列挙。
+     画像ファイル自体は Notion 同期時にアップロードされページ末尾に添付される。
+     図が無ければ "None"。 -->
 -

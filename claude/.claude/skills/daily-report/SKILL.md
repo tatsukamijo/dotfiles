@@ -68,6 +68,7 @@ Inputs:
   OUT           = <<OUT>>
   TRANSCRIPT    = <<TRANSCRIPT path, or "none">>
   TEMPLATE      = <<skill dir>>/template.md
+  UPLOAD_SCRIPT = <<skill dir>>/notion-upload-images.sh
   NOTION_PARENT = <<parent page URL/ID, or "DISABLED">>
 
 1. Git signals — run in ROOT, capture output:
@@ -138,10 +139,31 @@ PY
    - Replace {{DATE}}, {{PROJECT}}, {{BRANCH}}.
    - Build sections from the session digest; git signals only corroborate. Do
      NOT omit real work just because it never reached a commit.
-   - Terse: bullets <= 1 line. Experiments = "N/A" unless a run / eval / sweep
-     clearly happened. Findings = conclusions, not a commit recap. Next = <= 3
-     concrete bullets. Empty sections → "None" / "N/A", never pad. Do not invent
-     metrics, experiments, or blockers.
+   - Every section carries a 🔬 Research track and a 🛠️ Engineering track, marked
+     by the **🔬 Research** / **🛠️ Engineering** bold labels — keep both labels and
+     classify each item. Research = hypotheses, experiment design, results and
+     their interpretation, scientific conclusions, methodology calls. Engineering
+     = code, infrastructure, tooling, configs, pipeline plumbing, build/deploy,
+     bug fixes. An item with both facets is split — research facet under Research,
+     engineering facet under Engineering, no whole-item duplication.
+   - Formatting — each track is a BULLET LIST, never a paragraph. The
+     **🔬 Research** / **🛠️ Engineering** label sits alone on its line; content
+     follows as `-` bullets on the next lines. Never write `**🔬 Research** — ...`
+     (label and text on one line). One bullet = one fact, <= ~15 words; four
+     facts is four bullets, not one run-on bullet.
+   - Numbers belong in tables, not prose. Any quantitative result or comparison
+     across conditions (a metric at several settings, an ablation, a sweep) goes
+     into the Experiments table as rows — never as numbers buried in a sentence.
+     Findings then state the conclusion and may point at the table.
+   - Terse: Experiments = "N/A" unless a run / eval / sweep clearly happened.
+     Findings = conclusions, not a commit recap. Next = <= 3 bullets per track.
+     Empty subsections → "None" / "N/A", never pad. Do not invent metrics,
+     experiments, or blockers.
+   - Figures — also collect today's analysis images: *.png / *.jpg / *.jpeg
+     files shown as new ("??") or modified ("M") in git status that illustrate
+     a result (usually under a figures/ dir). Cap at 6. Under "## 📊 Figures"
+     list each as `- <path relative to ROOT> — <one-line caption>`; if none,
+     that section is "None". The image files are uploaded to Notion in step 4.
 
 4. Notion sync — skip entirely if NOTION_PARENT is "DISABLED". Otherwise:
    - Select the connector. Multiple Notion MCP connectors may be present (tool
@@ -166,9 +188,20 @@ PY
        position start puts the newest report first. Verified mechanism.)
    - On "object not found" / permission error: stop, report that NOTION_PARENT is
      not shared with the connector. Do not retry blindly.
+   - Figures upload — after the page text is synced and you have the child page
+     id, upload the files listed in the report's "## 📊 Figures" section to that
+     page (the MCP cannot upload binaries — this uses the Notion REST API):
+       source ~/.bashrc.local 2>/dev/null; bash UPLOAD_SCRIPT <child-page-id> <abs fig path> ...
+     Pass the child page id (UUID) and ABSOLUTE figure paths. The script needs
+     NOTION_TOKEN (a Notion internal-integration token) in the environment. If
+     NOTION_TOKEN is unset it prints "NOTION_TOKEN not set" — then report
+     "figures: NOTION_TOKEN not set". On any other non-zero exit, report
+     "figures: upload failed: <script stderr>"; never fail the run over figures.
+     Skip silently when the Figures section is "None".
 
 5. Return ONE line: the saved OUT path + Notion status
-   (synced / off / "MCP unavailable" / "failed: <reason>").
+   (synced / off / "MCP unavailable" / "failed: <reason>") + figures status
+   (uploaded N / none / "NOTION_TOKEN not set" / "upload failed: <reason>").
 ```
 
 ## Notes
@@ -181,6 +214,11 @@ PY
 - Re-running on the same day overwrites the local file and replaces the existing
   Notion child page — it refreshes, it does not duplicate.
 - Notion sync is best-effort: a failed sync never blocks the local report.
+- Figures: the "## 📊 Figures" section lists today's analysis images. The image
+  files are uploaded to the Notion page via the REST API (notion-upload-images.sh),
+  which needs NOTION_TOKEN — a Notion internal-integration token — exported in
+  ~/.bashrc.local. Without it, figures are listed in the report text but not
+  uploaded to Notion.
 - The session digest is sourced from the on-disk transcript (not live context),
   which is what lets the whole job run in the background. It captures the session
   up to dispatch time.
