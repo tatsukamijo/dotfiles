@@ -165,8 +165,8 @@ PY
    - Replace {{DATE}}, {{PROJECT}}, {{BRANCH}}.
    - Build sections from the session digest; git signals only corroborate. Do
      NOT omit real work just because it never reached a commit.
-   - Six sections carry a 🔬 Research track and a 🛠️ Engineering track — Objective,
-     Progress, Experiments, Findings, Issues / Blockers, Next — marked by the
+   - Five sections carry a 🔬 Research track and a 🛠️ Engineering track — Objective,
+     Progress, Findings, Issues / Blockers, Next — marked by the
      **🔬 Research** / **🛠️ Engineering** bold labels; keep both labels and classify
      each item. The other four sections (Hypotheses, Decisions, Yesterday's Next,
      Reproducibility) are single tables / checklists / lists — no R/E split, no
@@ -192,15 +192,19 @@ PY
      sub-bullet = one fact, <= ~15 words. A topic whose conclusion needs no
      elaboration is one top-level bullet with no sub-bullet. Never put content
      on the label line (no `**🔬 Research** — ...`).
-   - Numbers belong in tables, not prose. Any quantitative result or comparison
-     across conditions (a metric at several settings, an ablation, a sweep) goes
-     into the Experiments table as rows — never as numbers buried in a sentence.
-     Findings then state the conclusion and may point at the table.
-   - Experiments tables — columns `target` and `verdict` sit between `metric` and
-     `note`. `target` = the threshold pre-registered for the run before its
-     result was seen (success-rate bar, val-loss ceiling, p-value, speedup goal);
-     `—` if none was set — never invent one. `verdict` = `pass` / `fail` against
-     that target; `—` when there is no target.
+   - Numbers belong in Findings sub-bullets, not buried in prose. Every
+     quantitative result — a metric, an ablation point, a sweep setting — is a
+     terse sub-bullet under the conclusion it supports, naming the run and the
+     condition; the top-level bullet is the conclusion, the sub-bullets are its
+     evidence. A comparison across conditions goes under ONE conclusion: inline
+     in a sub-bullet when short (`real 0.098 / shuffled 0.107 / no-dt 0.112`),
+     one sub-bullet per condition when not.
+   - Pre-registered targets — if a run had a pass/fail bar fixed BEFORE its
+     result was seen (success-rate floor, val-loss ceiling, p-value, speedup
+     goal), its supporting sub-bullet states the result AND whether it cleared
+     that bar — e.g. "dyn_rmse stayed flat over 2000 steps — target was a drop
+     → fail". Never invent a bar that was not actually pre-registered; a run
+     with no prior bar simply reports its result.
    - Findings confidence markers — every Findings top-level (conclusion) bullet,
      both tracks, ends with a plain-bracket tag (no backticks): `[confirmed]`
      (reproduced, ≥2 independent runs, or strong multi-metric evidence),
@@ -216,7 +220,9 @@ PY
      the previous-report read), update its status where today's work bears on it,
      and add rows for hypotheses raised today. A status flip (e.g. `open` →
      `refuted`) must also surface as a `[refuted-prior]` Finding — the two are
-     coupled. No hypotheses → `N/A`.
+     coupled. No hypotheses → `N/A`. Any literal `|` inside a table cell (here
+     or in Decisions) must be escaped `\|`, else it splits the row into phantom
+     columns.
    - Decisions — the `## 🧭 Decisions` table (columns decision · alternatives ·
      rationale). Log only real decisions: a path taken over a *named*
      alternative. Routine actions are not decisions. None → `N/A`.
@@ -226,28 +232,29 @@ PY
      what remains), `[ ]` carried over. Every `[~]` / `[ ]` item must also appear
      in today's `## ⏭️ Next` so nothing is silently dropped. No previous report
      → `N/A`.
-   - Reproducibility appendix — the `## 📌 Reproducibility` section collects one
-     compact bullet per run that appears in either Experiments table, NOT in the
-     table itself (the appendix keeps the body concise):
+   - Reproducibility roster — the `## 📌 Reproducibility` section collects one
+     compact bullet per run, sweep, eval or diagnostic executed today. It is the
+     COMPLETE run roster: a run that produced numbers but no headline Finding is
+     still recorded here, never silently dropped.
        - <run label> — commit `<sha>` · ckpt `<path>` · seed `<n>` · ds `<version>` · pueue `<id>`
-     `<run label>` matches that row's `run` / `benchmark` cell. Omit any field
-     that does not apply. No runs → `None`.
+     `<run label>` is the name that run is referred to by in Findings. Omit any
+     field that does not apply. No runs → `None`.
    - TL;DR — write it LAST, after every section is drafted: a one-line abstract
      (may wrap to two, never longer) distilled from Findings — the single most
      important result plus the current state — on the `**TL;DR** — …` header
      line. Quiet day → `**TL;DR** — quiet day; no runs or commits.`
-   - Terse: Experiments = "N/A" unless a run / eval / sweep clearly happened.
-     Findings = conclusions, not a commit recap. Next = <= 3 topics per track.
-     Hypotheses / Decisions empty → `N/A`; Yesterday's Next with no prior report
-     → `N/A`; Reproducibility with no runs → `None`. Empty subsections →
-     "None" / "N/A", never pad. Do not invent metrics, experiments, or blockers.
+   - Terse: Findings = conclusions with their evidence numbers, not a commit
+     recap. Next = <= 3 topics per track. Hypotheses / Decisions empty → `N/A`;
+     Yesterday's Next with no prior report → `N/A`; Reproducibility with no runs
+     → `None`. Empty subsections → "None" / "N/A", never pad. Do not invent
+     metrics, runs, or blockers.
    - Figures — collect today's analysis images: *.png / *.jpg / *.jpeg files
      shown as new ("??") or modified ("M") in git status that illustrate a
      result (usually under a figures/ dir). Cap at 6. Each figure goes next to
      the result it supports — like a figure in a paper, never a figures section
      and never an end-of-page dump.
-     Placement — on its own line, directly below the Findings / Experiments /
-     Progress SUB-BULLET it illustrates, write a Markdown image line:
+     Placement — on its own line, directly below the Findings / Progress
+     SUB-BULLET it illustrates, write a Markdown image line:
        ![<CAPTION>](<absolute image path>)
      <CAPTION> states what to CONCLUDE from the figure, not what it depicts —
      the takeaway with the key number. Not "DTW distance, ph1 vs ph2 across
@@ -266,13 +273,35 @@ PY
      MCP unavailable". If connectors exist but none can fetch NOTION_PARENT, skip
      and report "Notion: NOTION_PARENT unreachable (wrong workspace)".
    - Child page title = "<DATE> — <PROJECT>" (e.g. "2026-05-20 — franka").
-   - Child page content = the report body with two edits: drop its leading
-     "# Daily Report —" line (the Notion page title already carries the date),
-     and remove every Markdown image line (a line whose trimmed text matches
-     `![...](...)`). A local image path is not a URL — left in, Notion renders
-     it as a dead "Add an image" placeholder; the figures are re-added as real
-     uploads in the Figures-upload step below. Pass the rest of the markdown
-     as-is; the hosted Notion MCP converts it to blocks server-side.
+   - Child page content = the report body, transformed for Notion. The body
+     itself (the local .md) stays plain Markdown — these transforms apply ONLY
+     to the copy sent to Notion. It is Notion-flavored Markdown; full syntax is
+     at the MCP resource `notion://docs/enhanced-markdown-spec`. Apply in order:
+     a. Drop the leading "# Daily Report —" line — the page title carries the date.
+     b. Remove every Markdown image line (trimmed text matching `![...](...)`):
+        a local path is not a URL, so Notion renders a dead "Add an image"
+        placeholder. Figures are re-added as real uploads in the step below.
+     c. Wrap the TL;DR line in a callout — indent the inner line one tab:
+          <callout icon="🎯" color="gray_bg">
+            **TL;DR** — …
+          </callout>
+        This is the ONLY callout used to highlight a result — never wrap an
+        individual Finding in a callout.
+     d. Color each Findings conclusion bullet's TRAILING confidence tag inline
+        (only the trailing tag — not the same word used mid-sentence):
+        `[confirmed]` → `<span color="green">[confirmed]</span>`,
+        `[refuted-prior]` → `<span color="orange">[refuted-prior]</span>`,
+        `[preliminary]` → `<span color="gray">[preliminary]</span>`.
+     e. If Reproducibility has run bullets, make it collapsible: its heading
+        becomes `## 📌 Reproducibility {toggle="true"}` and every bullet under it
+        is indented one extra tab so it nests in the toggle. Just "None" → leave
+        the heading plain.
+     f. If the Issues / Blockers section has real content (not "None"), wrap its
+        whole body — the **🔬 Research** / **🛠️ Engineering** labels and their
+        bullets — in `<callout icon="🚧" color="red_bg"> … </callout>`, every
+        wrapped line indented one extra tab (sub-bullets keep their relative
+        nesting). Empty section → no callout.
+     Pass the result as-is; the hosted Notion MCP converts it to blocks.
    - notion-search under NOTION_PARENT for a child page with that exact title:
      - EXISTS → notion-update-page on it, command "replace_content", new_str = body.
      - NONE → notion-create-pages with parent {"type":"page_id","page_id":NOTION_PARENT},
@@ -329,6 +358,10 @@ PY
   end-of-page dump. It needs NOTION_TOKEN — a Notion internal-integration
   token — exported in ~/.bashrc.local. Without it the report syncs as text
   only; figures are skipped.
+- Notion styling: the Notion copy is enriched in the sync step (step 4 transforms
+  c–f) — TL;DR as a callout, colored Findings confidence tags, a collapsible
+  Reproducibility toggle, a red Issues / Blockers callout. The local .md stays
+  plain Markdown; the styling lives only on the Notion page.
 - The session digest is sourced from on-disk transcripts (not live context),
   which is what lets the whole job run in the background. It reads every
   same-day session *.jsonl under TRANSCRIPT_DIR, up to dispatch time.

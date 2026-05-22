@@ -7,8 +7,8 @@
 ---
 
 <!-- 記入ガイド:
-     ・🔬 Research / 🛠️ Engineering の2トラックに分割するのは6セクションのみ
-       （Objective・Progress・Experiments・Findings・Issues/Blockers・Next）。両ラベル必須。
+     ・🔬 Research / 🛠️ Engineering の2トラックに分割するのは5セクションのみ
+       （Objective・Progress・Findings・Issues/Blockers・Next）。両ラベル必須。
        🔬 Research    = 仮説・実験設計・結果とその解釈・科学的結論・手法上の判断。
        🛠️ Engineering = コード・基盤・ツール・設定・パイプライン・ビルド/デプロイ・バグ修正。
      ・Hypotheses・Decisions・Yesterday's Next・Reproducibility は R/E 分割せず
@@ -18,9 +18,9 @@
        フラットな羅列にしない。結論が1行で完結するなら sub-bullet 無しでよい。
      ・TL;DR は header の1行（最大2行）。Findings から最後に蒸留して書く。
      ・Findings の top-level bullet 末尾に確信度 [confirmed]/[preliminary]/[refuted-prior]。
-     ・数値・条件比較は Experiments テーブルへ。文中に数字を散らさない。
-       target = 事前設定の閾値（無ければ —）、verdict = target に対し pass/fail。
-     ・該当が無いトラックは "None"（Experiments のみ "N/A"）。pad しない。
+     ・数値・条件比較は Findings の sub-bullet へ（run名・条件を明記）。文中に散らさない。
+       事前設定の閾値があった run は、その達成可否(pass/fail)も sub-bullet に書く。
+     ・該当が無いトラックは "None"。pad しない。
      ・解析画像は専用セクションを作らず、該当する sub-bullet の下にネスト挿入される
        （worker が anchor 指定 → notion-upload-images.sh）。 -->
 
@@ -41,20 +41,6 @@
 **🛠️ Engineering**
 - conclusion
   - detail
-
-## 🧪 Experiments
-
-**🔬 Research**
-
-| run | config | metric | target | verdict | note |
-|---|---|---|---|---|---|
-|  |  |  |  |  |  |
-
-**🛠️ Engineering**
-
-| benchmark | setup | metric | target | verdict | note |
-|---|---|---|---|---|---|
-|  |  |  |  |  |  |
 
 ## 🔍 Findings
 
