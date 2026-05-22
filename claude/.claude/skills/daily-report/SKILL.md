@@ -1,6 +1,6 @@
 ---
 name: daily-report
-description: Generate a terse research-style daily report for the current project. Runs almost entirely in a background agent — the foreground only resolves paths and the Notion target, then a background worker reads today's session transcript + git activity, drafts the report to <project>/.claude/daily-reports/YYYY-MM-DD.md, and (if configured) syncs it as a dated child page placed at the TOP of a Notion parent page. Use when the user says "今日の日報書いて", "daily report", "今日のまとめ", or asks to summarize today's work in this project.
+description: Generate a terse research-style daily report for the current project. Runs almost entirely in a background agent — the foreground only resolves paths and the Notion target, then a background worker reads today's session transcripts + git activity, drafts the report to <project>/.claude/daily-reports/YYYY-MM-DD.md, and (if configured) syncs it as a dated child page placed at the TOP of a Notion parent page. Use when the user says "今日の日報書いて", "daily report", "今日のまとめ", or asks to summarize today's work in this project.
 ---
 
 # Daily Report
@@ -23,12 +23,17 @@ Notion target.
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 DATE=$(date +%Y-%m-%d)
 OUT="$ROOT/.claude/daily-reports/$DATE.md"
-TRANSCRIPT=$(find "$HOME/.claude/projects" -maxdepth 2 -name "${CLAUDE_CODE_SESSION_ID}.jsonl" 2>/dev/null | head -1)
+SESSION_TX=$(find "$HOME/.claude/projects" -maxdepth 2 -name "${CLAUDE_CODE_SESSION_ID}.jsonl" 2>/dev/null | head -1)
+TRANSCRIPT_DIR=$([ -n "$SESSION_TX" ] && dirname "$SESSION_TX" || echo "$HOME/.claude/projects/$(echo "$ROOT" | sed 's/[/.]/-/g')")
 ```
-`CLAUDE_CODE_SESSION_ID` is set by Claude Code and the transcript file is named
-`<session-id>.jsonl`, so this `find` resolves it exactly. If `TRANSCRIPT` is
-empty, fall back to the newest `*.jsonl` in that project dir; if still none,
-pass `TRANSCRIPT=none` (the worker then uses git only).
+`CLAUDE_CODE_SESSION_ID` names the current session's transcript
+(`<session-id>.jsonl`). Every Claude Code session for this project writes its
+own `*.jsonl` into the SAME directory, so `TRANSCRIPT_DIR` — the parent of that
+file — is the project's whole transcript dir, and the worker digests EVERY
+same-day session in it, not just the one that ran `/daily-report`. If the
+current session's file is not found, fall back to the conventional mangled
+project dir (`$HOME/.claude/projects/` + `ROOT` with every `/` and `.` turned
+to `-`). The worker handles a missing or empty dir by using git signals only.
 
 **Notion target** — resolve now, because the worker cannot ask:
 - First hit wins: project-local `$ROOT/.claude/daily-report-notion.txt`, then the
@@ -66,7 +71,7 @@ Inputs:
   BRANCH        = <<current git branch>>
   DATE          = <<DATE>>            (local date, YYYY-MM-DD)
   OUT           = <<OUT>>
-  TRANSCRIPT    = <<TRANSCRIPT path, or "none">>
+  TRANSCRIPT_DIR = <<TRANSCRIPT_DIR>>  (dir holding this project's session *.jsonl)
   TEMPLATE      = <<skill dir>>/template.md
   UPLOAD_SCRIPT = <<skill dir>>/notion-upload-images.sh
   NOTION_PARENT = <<parent page URL/ID, or "DISABLED">>
@@ -76,59 +81,74 @@ Inputs:
    - git status --short
    - git diff --stat HEAD~5..HEAD   (or HEAD if fewer than 5 commits)
 
-2. Session digest — if TRANSCRIPT is not "none", extract today's conversation
-   with the self-contained command below (substitute TRANSCRIPT and DATE). It
-   depends only on python3 — no bundled file. Run it EXACTLY, python lines flush
-   to the left margin:
+2. Session digest — extract today's conversation across ALL of this project's
+   sessions with the self-contained command below (substitute TRANSCRIPT_DIR
+   and DATE). It reads every *.jsonl in TRANSCRIPT_DIR, keeps entries dated
+   DATE, de-dups by message uuid, and merges them in timestamp order — a day
+   split over several Claude Code sessions becomes one chronological digest. It
+   depends only on python3 — no bundled file. Run it EXACTLY, python lines
+   flush to the left margin:
 
-python3 - "TRANSCRIPT" "DATE" <<'PY'
-import sys, json
+python3 - "TRANSCRIPT_DIR" "DATE" <<'PY'
+import sys, json, glob, os
 from datetime import datetime
-path, date = sys.argv[1], sys.argv[2]
-out = []
-try:
-    fh = open(path)
-except OSError as e:
-    sys.exit("transcript open failed: %s" % e)
-for line in fh:
-    line = line.strip()
-    if not line:
-        continue
+tdir, date = sys.argv[1], sys.argv[2]
+seen, rows = set(), []
+for path in sorted(glob.glob(os.path.join(tdir, "*.jsonl"))):
     try:
-        d = json.loads(line)
-    except ValueError:
+        if datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d") < date:
+            continue
+        fh = open(path)
+    except OSError:
         continue
-    try:
-        lo = datetime.fromisoformat((d.get("timestamp") or "").replace("Z", "+00:00")).astimezone()
-    except ValueError:
-        continue
-    if lo.strftime("%Y-%m-%d") != date:
-        continue
-    t = d.get("type")
-    if t not in ("user", "assistant"):
-        continue
-    c = (d.get("message") or {}).get("content")
-    if isinstance(c, str):
-        xs = [c]
-    elif isinstance(c, list):
-        xs = [b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text"]
-    else:
-        xs = []
-    tx = "\n".join(x for x in xs if x).strip()
-    if not tx:
-        continue
-    if t == "user" and tx.lstrip().startswith("<"):
-        continue
-    if len(tx) > 1500:
-        tx = tx[:1500] + " ...[truncated]"
-    out.append("[%s %s]\n%s" % (lo.strftime("%H:%M"), t.upper(), tx))
+    for line in fh:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        try:
+            lo = datetime.fromisoformat((d.get("timestamp") or "").replace("Z", "+00:00")).astimezone()
+        except ValueError:
+            continue
+        if lo.strftime("%Y-%m-%d") != date:
+            continue
+        t = d.get("type")
+        if t not in ("user", "assistant"):
+            continue
+        uid = d.get("uuid")
+        if uid in seen:
+            continue
+        if uid:
+            seen.add(uid)
+        c = (d.get("message") or {}).get("content")
+        if isinstance(c, str):
+            xs = [c]
+        elif isinstance(c, list):
+            xs = [b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text"]
+        else:
+            xs = []
+        tx = "\n".join(x for x in xs if x).strip()
+        if not tx:
+            continue
+        if t == "user" and tx.lstrip().startswith("<"):
+            continue
+        if len(tx) > 1500:
+            tx = tx[:1500] + " ...[truncated]"
+        rows.append((lo, t, tx))
+    fh.close()
+rows.sort(key=lambda r: r[0])
+out = ["[%s %s]\n%s" % (lo.strftime("%H:%M"), t.upper(), tx) for lo, t, tx in rows]
 print("\n\n".join(out) if out else "(no entries for %s)" % date)
 PY
 
    - Distill the printed output into the session digest — terse and factual:
      tasks tackled, decisions made, problems diagnosed and their root causes,
-     things learned, what is left open. No narrative. THIS IS THE PRIMARY
-     SOURCE for the report.
+     things learned, what is left open. No narrative. Entries from different
+     sessions are interleaved by wall-clock time — treat the day as one
+     continuous record. THIS IS THE PRIMARY SOURCE for the report.
    - FALLBACK: if python3 is unavailable or the command errors out, skip the
      transcript entirely, draft from the git signals only, and add one line to
      the report (under Findings or Next) noting "session digest unavailable
@@ -309,6 +329,6 @@ PY
   end-of-page dump. It needs NOTION_TOKEN — a Notion internal-integration
   token — exported in ~/.bashrc.local. Without it the report syncs as text
   only; figures are skipped.
-- The session digest is sourced from the on-disk transcript (not live context),
-  which is what lets the whole job run in the background. It captures the session
-  up to dispatch time.
+- The session digest is sourced from on-disk transcripts (not live context),
+  which is what lets the whole job run in the background. It reads every
+  same-day session *.jsonl under TRANSCRIPT_DIR, up to dispatch time.
