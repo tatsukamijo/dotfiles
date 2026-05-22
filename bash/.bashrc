@@ -50,27 +50,32 @@ if [[ "$(hostname)" == *login* ]]; then
     done
     unset _cmd
 
-    # --- Tier 3: shell-start status banner ---
-    _login_banner() {
-        local load1 myproc mycpu myrss mystale
-        load1=$(awk '{print int($1)}' /proc/loadavg)
-        myproc=$(ps -u "$USER" --no-headers 2>/dev/null | wc -l)
-        mycpu=$(ps -u "$USER" -o pcpu= 2>/dev/null | awk '{s+=$1} END{print int(s)}')
-        myrss=$(ps -u "$USER" -o rss= 2>/dev/null | awk '{s+=$1} END{printf "%.0f", s/1024/1024}')
-        mystale=$(ps -u "$USER" -o etimes= 2>/dev/null | awk '$1>86400 {n++} END{print n+0}')
-        printf '\033[90m[%s] load=%d  mine: %d procs / %d%%CPU / %sG RAM' \
-            "$(hostname -s)" "$load1" "$myproc" "$mycpu" "$myrss"
-        [ "$mystale" -gt 0 ] && printf '  WARN: %d stale>24h' "$mystale"
-        printf '\033[0m\n'
+fi
+
+# --- Shell-start status banner (all hosts) ---
+# Shows host load + own footprint on every interactive shell start.
+# Compute-node-aware: cap badge and "switch nodes" hint only fire on login.
+_status_banner() {
+    local load1 ncpu myproc mycpu myrss mystale
+    load1=$(awk '{print int($1)}' /proc/loadavg)
+    ncpu=$(nproc 2>/dev/null || echo 1)
+    myproc=$(ps -u "$USER" --no-headers 2>/dev/null | wc -l)
+    mycpu=$(ps -u "$USER" -o pcpu= 2>/dev/null | awk '{s+=$1} END{print int(s)}')
+    myrss=$(ps -u "$USER" -o rss= 2>/dev/null | awk '{s+=$1} END{printf "%.0f", s/1024/1024}')
+    mystale=$(ps -u "$USER" -o etimes= 2>/dev/null | awk '$1>86400 {n++} END{print n+0}')
+    printf '\033[90m[%s] load=%d/%d  mine: %d procs / %d%%CPU / %sG RAM' \
+        "$(hostname -s)" "$load1" "$ncpu" "$myproc" "$mycpu" "$myrss"
+    [ "$mystale" -gt 0 ] && printf '  WARN: %d stale>24h' "$mystale"
+    printf '\033[0m\n'
+    if [[ "$(hostname)" == *login* ]]; then
         [ "$load1" -gt 15 ] && \
             printf '\033[33m! high load — consider another login node\033[0m\n'
         [ -n "$CGROUP_CAPPED" ] && \
             printf '\033[90mshell capped: 4 CPU / 48G mem  (NO_CAP=1 bash to bypass)\033[0m\n'
-    }
-    _login_banner
-    unset -f _login_banner
-
-fi
+    fi
+}
+_status_banner
+unset -f _status_banner
 
 # --- Cross-host helpers ---
 # Inspect own processes; clean up stale ones.
