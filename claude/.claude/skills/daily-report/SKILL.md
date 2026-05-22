@@ -146,24 +146,43 @@ PY
      = code, infrastructure, tooling, configs, pipeline plumbing, build/deploy,
      bug fixes. An item with both facets is split — research facet under Research,
      engineering facet under Engineering, no whole-item duplication.
-   - Formatting — each track is a BULLET LIST, never a paragraph. The
-     **🔬 Research** / **🛠️ Engineering** label sits alone on its line; content
-     follows as `-` bullets on the next lines. Never write `**🔬 Research** — ...`
-     (label and text on one line). One bullet = one fact, <= ~15 words; four
-     facts is four bullets, not one run-on bullet.
+   - Formatting — each track is a TWO-LEVEL bullet list, never a paragraph and
+     never a flat wall of bullets. The **🔬 Research** / **🛠️ Engineering** label
+     sits alone on its line. Under it, each top-level `-` bullet STATES THE
+     TOPIC'S CONCLUSION — the takeaway in one terse phrase, NOT a bare category
+     label. The supporting facts hang off it as 2-space-indented sub-bullets:
+       **🔬 Research**
+       - ph2 dynamics-MLP fine-tune gives no measurable gain over plain-BC ph1
+         - tie on every metric — success rate, duration, fidelity
+         - dyn-loss + reg + smoothness gave no benefit on this forgiving task
+       - Sub-linear speedup is arm-tracking-limited, not PV-capped
+         - speedup sub-linear — 2.36x at 150 Hz vs ideal 3x
+         - realized peak only ~38% of the PV cap
+     Write the conclusion, not the category: "Sub-linear speedup is
+     arm-tracking-limited, not PV-capped", never "Speedup bottleneck". One
+     sub-bullet = one fact, <= ~15 words. A topic whose conclusion needs no
+     elaboration is one top-level bullet with no sub-bullet. Never put content
+     on the label line (no `**🔬 Research** — ...`).
    - Numbers belong in tables, not prose. Any quantitative result or comparison
      across conditions (a metric at several settings, an ablation, a sweep) goes
      into the Experiments table as rows — never as numbers buried in a sentence.
      Findings then state the conclusion and may point at the table.
    - Terse: Experiments = "N/A" unless a run / eval / sweep clearly happened.
-     Findings = conclusions, not a commit recap. Next = <= 3 bullets per track.
+     Findings = conclusions, not a commit recap. Next = <= 3 topics per track.
      Empty subsections → "None" / "N/A", never pad. Do not invent metrics,
      experiments, or blockers.
    - Figures — also collect today's analysis images: *.png / *.jpg / *.jpeg
      files shown as new ("??") or modified ("M") in git status that illustrate
-     a result (usually under a figures/ dir). Cap at 6. Under "## 📊 Figures"
-     list each as `- <path relative to ROOT> — <one-line caption>`; if none,
-     that section is "None". The image files are uploaded to Notion in step 4.
+     a result (usually under a figures/ dir). Cap at 6. Do NOT add a figures
+     section — like a good paper, each figure goes next to the result it
+     supports. For each figure, note three things for step 4:
+       (a) ANCHOR — a short verbatim plain-text phrase (3-8 words, no markdown
+           markers, unique on the page) copied from the Experiments/Findings
+           sub-bullet the figure illustrates;
+       (b) the ABSOLUTE image path;
+       (c) CAPTION — a one-line description of what the figure shows.
+     Write that supporting sub-bullet normally; the image is nested under it in
+     step 4. If there are no figures, skip this.
 
 4. Notion sync — skip entirely if NOTION_PARENT is "DISABLED". Otherwise:
    - Select the connector. Multiple Notion MCP connectors may be present (tool
@@ -189,15 +208,19 @@ PY
    - On "object not found" / permission error: stop, report that NOTION_PARENT is
      not shared with the connector. Do not retry blindly.
    - Figures upload — after the page text is synced and you have the child page
-     id, upload the files listed in the report's "## 📊 Figures" section to that
-     page (the MCP cannot upload binaries — this uses the Notion REST API):
-       source ~/.bashrc.local 2>/dev/null; bash UPLOAD_SCRIPT <child-page-id> <abs fig path> ...
-     Pass the child page id (UUID) and ABSOLUTE figure paths. The script needs
-     NOTION_TOKEN (a Notion internal-integration token) in the environment. If
-     NOTION_TOKEN is unset it prints "NOTION_TOKEN not set" — then report
-     "figures: NOTION_TOKEN not set". On any other non-zero exit, report
-     "figures: upload failed: <script stderr>"; never fail the run over figures.
-     Skip silently when the Figures section is "None".
+     id, place each figure from step 3 next to its supporting bullet (the MCP
+     cannot upload binaries — this uses the Notion REST API):
+       source ~/.bashrc.local 2>/dev/null; bash UPLOAD_SCRIPT '<child-page-id>' '<anchor>' '<abs image path>' '<caption>' ...
+     Args after the page id are (anchor, image, caption) triples, one per figure
+     — quote each, they contain spaces. The script uploads each image and nests
+     it as an image block UNDER the bullet whose text contains the anchor (it
+     renders indented beneath that bullet); an unmatched anchor falls back to
+     end-of-page. NOTION_TOKEN (a Notion
+     internal-integration token) must be in the environment. If it is unset the
+     script prints "NOTION_TOKEN not set" — then report "figures: NOTION_TOKEN
+     not set". On any other non-zero exit report "figures: upload failed:
+     <script stderr>"; never fail the run over figures. Skip when there are no
+     figures.
 
 5. Return ONE line: the saved OUT path + Notion status
    (synced / off / "MCP unavailable" / "failed: <reason>") + figures status
@@ -214,11 +237,12 @@ PY
 - Re-running on the same day overwrites the local file and replaces the existing
   Notion child page — it refreshes, it does not duplicate.
 - Notion sync is best-effort: a failed sync never blocks the local report.
-- Figures: the "## 📊 Figures" section lists today's analysis images. The image
-  files are uploaded to the Notion page via the REST API (notion-upload-images.sh),
-  which needs NOTION_TOKEN — a Notion internal-integration token — exported in
-  ~/.bashrc.local. Without it, figures are listed in the report text but not
-  uploaded to Notion.
+- Figures: today's analysis images are nested under the Experiments/Findings
+  bullet each one supports — appended as a child block via the REST API, so each
+  figure sits indented beneath its discussion, no end-of-page dump
+  (notion-upload-images.sh, since the MCP cannot upload binaries). It needs NOTION_TOKEN — a Notion
+  internal-integration token — exported in ~/.bashrc.local. Without it the
+  report syncs as text only; figures are skipped.
 - The session digest is sourced from the on-disk transcript (not live context),
   which is what lets the whole job run in the background. It captures the session
   up to dispatch time.
