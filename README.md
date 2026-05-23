@@ -6,8 +6,7 @@ Maintainer: [tatsukamijo](https://github.com/tatsukamijo)
 ## 🌳 Layout
 
 A **single branch** (`main`) holds both macOS and Linux configs side by side.
-The installer detects the OS and stows only the relevant packages — there are
-no per-OS branches to keep in sync.
+The installer detects the OS and stows only the relevant packages.
 
 | Scope | Packages |
 |-------|----------|
@@ -17,40 +16,13 @@ no per-OS branches to keep in sync.
 
 Not stowed: `.submodules/` (git submodules), `docs/`, `.archive/`.
 
-## 📦 Prerequisites
-
-### 1. Install pixi
-
-```bash
-curl -fsSL https://pixi.sh/install.sh | bash
-exec $SHELL  # restart shell
-```
-
-### 2. Install tools via pixi
-
-```bash
-pixi global install \
-  stow tmux=3.4 git curl jq bc nvim nodejs \
-  stylua black isort clang-format python=3.11 \
-  ripgrep pre-commit
-# Linux only: also install `xclip pueue`
-```
-
-### 3. Install Claude Code
-
-```bash
-curl -fsSL https://claude.ai/install.sh | bash
-```
-
-> The `install.sh` quick start below does all three steps for you.
-
 ## 🚀 Installation
 
 ### Quick start (idempotent installer)
 
 ```bash
 git clone --recursive git@github.com:tatsukamijo/dotfiles.git ~/dotfiles
-cd ~/dotfiles && bash install.sh
+cd ~/dotfiles && ./install.sh
 ```
 
 `install.sh` is **safe to re-run** from any partial state. It installs pixi, the
@@ -58,24 +30,36 @@ global tool list, Claude Code, and submodules, then symlinks the
 **OS-appropriate** packages via `stow -R`. Pre-existing real files are
 timestamp-backed up (`*.bak.<TS>`); existing symlinks are left alone.
 
-### Manual installation
+<details>
+<summary>What <code>install.sh</code> does under the hood</summary>
+
+Equivalent to running these by hand:
 
 ```bash
-# 1. Clone with submodules (--recursive pulls the nvim config submodule)
-git clone --recursive git@github.com:tatsukamijo/dotfiles.git ~/dotfiles
-cd ~/dotfiles
-# If you forgot --recursive:
-git submodule update --init --recursive
+# 1. pixi
+curl -fsSL https://pixi.sh/install.sh | bash
+exec $SHELL  # restart shell
 
-# 2. Back up any existing real config files (skip symlinks), then stow.
-#    Pick the line for your OS:
-stow -v claude nvim tmux zsh skhd yabai hammerspoon starship   # macOS
-stow -v claude nvim tmux bash pueue clipimg                    # Linux
+# 2. tools via pixi
+pixi global install \
+  stow tmux=3.4 git curl jq bc nvim nodejs \
+  stylua black isort clang-format python=3.11 \
+  ripgrep pre-commit
+# Linux only: also install `xclip pueue`
+
+# 3. Claude Code
+curl -fsSL https://claude.ai/install.sh | bash
 ```
+
+Plus: `git submodule update --init --recursive`, pre-creating `~/.config`,
+`~/.local`, `~/.claude` as real dirs so stow folds at file-level, timestamped
+backup of any conflicting real files, OS-appropriate `stow -R`, and `tpm`.
+
+</details>
 
 ### First-time Neovim setup
 
-Launch `nvim` once — plugins install via lazy.nvim and LSP servers via Mason.
+Launch `nvim` once. Plugins install via lazy.nvim and LSP servers via Mason.
 ☕ Neovim config is a submodule: see
 [tatsukamijo/tatsukamijo.nvim](https://github.com/tatsukamijo/tatsukamijo.nvim).
 
@@ -159,7 +143,7 @@ tmux source ~/.tmux.conf  # from within tmux
 cd ~/dotfiles
 git pull
 git submodule update --remote   # update nvim config
-bash install.sh                 # re-stow (idempotent, OS-aware)
+./install.sh                    # re-stow (idempotent, OS-aware)
 ```
 
 ## 🗑️ Uninstalling
