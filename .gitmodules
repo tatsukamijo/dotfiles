@@ -3,4 +3,4 @@
 	url = git@github.com:tatsukamijo/tatsukamijo.nvim.git
 [submodule ".submodules/virtual_desktop_docker"]
 	path = .submodules/virtual_desktop_docker
-	url = git@github.com:tatsukamijo/virtual_desktop_docker.git
+	url = git@github.com:matsuolab/virtual_desktop_docker.git
