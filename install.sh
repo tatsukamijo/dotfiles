@@ -38,7 +38,7 @@ esac
 # Stow packages: shared set + an OS-specific set. Deliberately NOT every dir.
 COMMON_PKGS=(claude nvim tmux)
 case "$OS_KIND" in
-  macos) OS_PKGS=(zsh skhd yabai hammerspoon starship) ;;
+  macos) OS_PKGS=(zsh skhd yabai hammerspoon starship borders) ;;
   linux) OS_PKGS=(bash pueue clipimg) ;;
   *)     OS_PKGS=() ;;
 esac
@@ -188,6 +188,7 @@ backup_existing_targets() {
     backup_if_real "$HOME/.zshrc"
     backup_if_real "$HOME/.config/skhd"
     backup_if_real "$HOME/.config/yabai"
+    backup_if_real "$HOME/.config/borders"
     backup_if_real "$HOME/.config/starship.toml"
     backup_if_real "$HOME/.hammerspoon"
   fi

@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+
+# FelixKratz/borders — fills the gap left by yabai v6+ removing native borders.
+# Launched from ~/.config/yabai/yabairc.
+
+borders \
+  style=round \
+  width=6.0 \
+  hidpi=on \
+  active_color=0xffd75f5f \
+  inactive_color=0xff414550 \
+  blur_radius=8.0 &
