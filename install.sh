@@ -12,6 +12,9 @@
 #   7. Restow the OS-appropriate packages (common + per-OS), surviving partial conflicts
 #   8. Install tpm (if missing)
 #
+# Run `./install.sh --uninstall` (or `-u`) to `stow -D` the same OS-appropriate
+# set of packages. Other steps (pixi tools, tpm, ...) are left in place.
+#
 # Failures in any step are logged but do NOT abort the rest of the script.
 # Existing symlinks are left untouched (treated as already-installed).
 #
@@ -218,6 +221,29 @@ run_stow() {
 }
 
 #------------------------------------------------------------------------------
+# uninstall: `stow -D` each package
+#------------------------------------------------------------------------------
+run_unstow() {
+  if ! have stow; then
+    warn "stow not installed; nothing to remove"
+    return
+  fi
+  log "Un-stowing $OS_KIND packages: ${STOW_PKGS[*]}"
+  if ! cd "$DOTFILES_DIR"; then
+    err "cd $DOTFILES_DIR failed"
+    return
+  fi
+  for pkg in "${STOW_PKGS[@]}"; do
+    [ -d "$pkg" ] || continue
+    if stow -D -t "$HOME" "$pkg" 2>/tmp/unstow-${pkg}.err; then
+      ok "unstow $pkg"
+    else
+      warn "unstow $pkg had issues; see /tmp/unstow-${pkg}.err"
+    fi
+  done
+}
+
+#------------------------------------------------------------------------------
 # 8. tpm (tmux plugin manager)
 #------------------------------------------------------------------------------
 ensure_tpm() {
@@ -237,12 +263,25 @@ ensure_tpm() {
 # main
 #------------------------------------------------------------------------------
 main() {
+  local action=install
+  case "${1:-}" in
+    ""|install)        ;;
+    --uninstall|-u)    action=uninstall ;;
+    *) err "unknown arg: $1 (use --uninstall to remove symlinks)"; exit 2 ;;
+  esac
+
   log "Dotfiles installer (idempotent)"
   log "DOTFILES_DIR=$DOTFILES_DIR"
   if [ ! -d "$DOTFILES_DIR" ]; then
     err "$DOTFILES_DIR not found. Clone with:"
     err "  git clone --recursive git@github.com:tatsukamijo/dotfiles.git $DOTFILES_DIR"
     exit 1
+  fi
+
+  if [ "$action" = uninstall ]; then
+    run_unstow
+    log "Done."
+    return 0
   fi
 
   ensure_pixi

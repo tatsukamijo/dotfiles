@@ -73,7 +73,7 @@ Then in tmux press `prefix + I` to install plugins (prefix is `Ctrl+p`).
 
 ## ✨ Features
 
-### 🤖 `gc` — Auto Commit Message Generator
+### 🤖 `gc`: Auto Commit Message Generator
 
 Stage your changes and run `gc` (**g**it **c**ommit) to generate a conventional
 commit message via the Claude API:
@@ -86,7 +86,7 @@ commit message via the Claude API:
 
 > 🔑 Requires `ANTHROPIC_API_KEY` in `~/.bashrc.local` (Linux) or `~/.zshrc.local` (macOS).
 
-### 📬 pueue-notify — Job Completion Email Notifications (Linux)
+### 📬 pueue-notify: Job Completion Email Notifications (Linux)
 
 Get HTML email notifications when [pueue](https://github.com/Nukesor/pueue)
 tasks complete, with success/failure status and truncated logs.
@@ -149,9 +149,8 @@ git submodule update --remote   # update nvim config
 ## 🗑️ Uninstalling
 
 ```bash
-cd ~/dotfiles
-# macOS
-stow -D claude nvim tmux zsh skhd yabai hammerspoon starship
-# Linux
-stow -D claude nvim tmux bash pueue clipimg
+cd ~/dotfiles && ./install.sh --uninstall
 ```
+
+`stow -D`s the OS-appropriate packages. Pixi tools and tpm stay installed
+(remove those by hand if you really want a clean slate).
