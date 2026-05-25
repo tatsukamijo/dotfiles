@@ -314,7 +314,34 @@ PY
         whole body — the **🔬 Research** / **🛠️ Engineering** labels and their
         bullets — in `<callout icon="🚧" color="red_bg"> … </callout>`, every
         wrapped line indented one extra tab (sub-bullets keep their relative
-        nesting). Empty section → no callout.
+        nesting). Empty section → no callout. The Issues / Blockers heading
+        STAYS OUTSIDE the callout (same pattern as TL;DR).
+
+        Worked example. Given the local markdown:
+          ## 🚧 Issues / Blockers
+
+          **🔬 Research**
+          - excite_v2 halted at 31/48 tasks
+            - mount wobbles at 100 Hz
+          **🛠️ Engineering**
+          - meshcat blank page not diagnosed
+
+        The transformed Notion body is:
+          ## 🚧 Issues / Blockers
+
+          <callout icon="🚧" color="red_bg">
+            **🔬 Research**
+            - excite_v2 halted at 31/48 tasks
+              - mount wobbles at 100 Hz
+            **🛠️ Engineering**
+            - meshcat blank page not diagnosed
+          </callout>
+
+        NEVER use GitHub admonition syntax (`> [!warning]`, `> [!note]`,
+        `> [!caution]`, etc.) — Notion renders those as literal text
+        inside a blockquote, and the body shows up as "Empty quote"
+        placeholder blocks. The ONLY callout syntax Notion accepts is
+        the `<callout>` XML tag shown in step (c) and (f).
      Pass the result as-is; the hosted Notion MCP converts it to blocks.
    - notion-search under NOTION_PARENT for a child page with that exact title:
      - EXISTS → notion-update-page on it, command "replace_content", new_str = body.
