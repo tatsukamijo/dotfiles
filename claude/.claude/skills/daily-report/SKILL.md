@@ -298,11 +298,22 @@ PY
         individual Finding in a callout.
      d. Color the LEADING confidence tag of each Findings conclusion bullet, and
         ONLY the bracketed tag — never the bullet text. Pure token substitution:
-        wrap exactly the bracket token in a span so `</span>` sits immediately
-        after the tag's closing `]`, leaving the rest of the line outside it:
+        wrap exactly the bracket token in a `<span color="...">` tag so the
+        closing `</span>` sits immediately after the tag's closing `]`,
+        leaving the rest of the line outside the span:
           `- [confirmed] <text>`     → `- <span color="green">[confirmed]</span> <text>`
           `- [refuted-prior] <text>` → `- <span color="orange">[refuted-prior]</span> <text>`
           `- [preliminary] <text>`   → `- <span color="gray">[preliminary]</span> <text>`
+        The tag name is `span`. Notion does NOT recognise any other tag
+        name for inline colour. NEVER write `<color color="...">`,
+        `<colour ...>`, `<font color="...">`, `<text color="...">`, or
+        wrap in markdown emphasis like `**[confirmed]**{color=green}` —
+        Notion will render those as literal text instead of colouring the
+        tag, and the page will show the angle-bracket syntax directly
+        instead of a coloured pill. The ONLY accepted opening tag is
+        `<span color="green">` / `<span color="orange">` / `<span color="gray">`
+        (or any other valid Notion colour name — see
+        notion://docs/enhanced-markdown-spec).
         Do NOT extend the span past the `]`; do NOT put a block-level
         `{color=...}` attribute on the bullet — either of those colors the whole
         line. Leave the same word alone where it recurs mid-sentence.
@@ -360,6 +371,23 @@ PY
      insert_content move once more. If it is still not first after that retry,
      add "move-to-top failed" to the Return line. Do NOT skip this check — the
      move silently failing (new report stuck at the bottom) is a known bug.
+   - Verify the body rendered cleanly — notion-fetch the CHILD page itself and
+     scan its returned content for literal-text artefacts that mean a
+     transform fell back to plain text instead of rendering as a Notion
+     block. Reject any of these strings appearing in the fetched body —
+     each one is the smoking gun of a specific past bug:
+       `<color`     — colour span used the wrong tag name (step d). Must be `<span color="...">`.
+       `<colour`    — same.
+       `<font`      — same.
+       `[!warning]` — GitHub admonition syntax leaked into the body (step f). Must be `<callout icon="🚧" color="red_bg"> ... </callout>`.
+       `[!note]`    — same.
+       `[!caution]` — same.
+       `Empty quote` — symptom of GitHub admonition being parsed as blockquote.
+       `{color=`    — block-level colour attribute on a bullet (step d).
+     If any of these strings appears, the transform produced bad text:
+     redo the transform on the body, replace_content again, and only
+     return "synced" once the post-fetch scan is clean. Add
+     "render-verify retried Nx" to the Return line if you had to retry.
    - On "object not found" / permission error: stop, report that NOTION_PARENT is
      not shared with the connector. Do not retry blindly.
    - Figures upload — after the page text is synced and you have the child page
