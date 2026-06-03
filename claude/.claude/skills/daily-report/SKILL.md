@@ -158,10 +158,24 @@ PY
    (mkdir -p the parent dir first; overwrite if it exists):
    - Previous report — find the most recent file in $ROOT/.claude/daily-reports/
      matching *.md whose date is strictly older than DATE (ignore today's own
-     OUT file on a re-run). If one exists, read its `## ⏭️ Next` section and its
-     `## 🧠 Hypotheses` table — this single read feeds both the Yesterday's Next
-     reconciliation and the Hypotheses carry-over below. None → first run, skip
-     both (their sections become `N/A`).
+     OUT file on a re-run). If one exists, read its `## ⏭️ Next` section, its
+     `## 🔄 Yesterday's Next` checklist, its `## 🧠 Hypotheses — Active` table,
+     and its `## 🧠 Hypotheses — Archived` table (older reports may still use
+     the legacy single `## 🧠 Hypotheses` heading — treat that as Active). This
+     single read feeds the Yesterday's Next reconciliation, the carry-counting,
+     and the Hypotheses carry-over below. None → first run, skip them all (their
+     sections become `N/A`).
+   - Threads — read `$ROOT/.claude/daily-report-threads.txt` if it exists. One
+     `#tag-name — short description` per line (blank lines and lines starting
+     with `#` ignored). Each tag names a research thread the project sustains
+     across days. The worker uses these tags as the `thread` column in
+     Hypotheses, and MAY suffix Findings / Issues / Next top-level bullets with
+     a single matching tag for longitudinal scanning. Missing or empty file →
+     no enforcement, but if today's work clearly clusters into 2-4 distinct
+     threads, propose tags and append them to the file (one per line, never
+     overwrite existing lines). A hypothesis raised today whose thread is not
+     yet in the file → either reuse the closest existing tag or append a new
+     line; never leave a contradiction between table cells and the file.
    - Replace {{DATE}}, {{PROJECT}}, {{BRANCH}}.
    - Build sections from the session digest; git signals only corroborate. Do
      NOT omit real work just because it never reached a commit.
@@ -192,6 +206,13 @@ PY
      sub-bullet = one fact, <= ~15 words. A topic whose conclusion needs no
      elaboration is one top-level bullet with no sub-bullet. Never put content
      on the label line (no `**🔬 Research** — ...`).
+     Thread tag (optional) — every top-level conclusion bullet in Findings /
+     Issues / Blockers / Next MAY end with a single `#thread-name` suffix
+     matching the project's threads file (see Threads above). Sub-bullets do
+     NOT carry tags. Confidence tag stays leading, thread stays trailing:
+       `- [confirmed] Hybrid beats either single-distribution model. #excite-data`
+     Skip the suffix when no thread tag clearly applies; do not invent one
+     per bullet.
    - Numbers belong in Findings sub-bullets, not buried in prose. Every
      quantitative result — a metric, an ablation point, a sweep setting — is a
      terse sub-bullet under the conclusion it supports, naming the run and the
@@ -214,16 +235,60 @@ PY
      report). Precedence: if it overturns a past claim use `[refuted-prior]`,
      else pick `[confirmed]` / `[preliminary]` by evidence strength. Sub-bullets
      are never tagged.
-   - Hypotheses ledger — the `## 🧠 Hypotheses` table (columns hypothesis ·
-     status · evidence): `status` ∈ `open` / `supported` / `refuted`; `evidence`
-     cites the run / finding and the date the status last changed. Carry over
-     every still-relevant row from the previous report's Hypotheses table (from
-     the previous-report read), update its status where today's work bears on it,
-     and add rows for hypotheses raised today. A status flip (e.g. `open` →
-     `refuted`) must also surface as a `[refuted-prior]` Finding — the two are
-     coupled. No hypotheses → `N/A`. Any literal `|` inside a table cell (here
-     or in Decisions) must be escaped `\|`, else it splits the row into phantom
-     columns.
+   - Hypotheses ledger — split into TWO tables, BOTH with columns
+     hypothesis · thread · status · evidence:
+       `## 🧠 Hypotheses — Active`
+       `## 🧠 Hypotheses — Archived`
+     `status` ∈ `open` / `supported` / `refuted`; `thread` is one of the
+     project's thread tags (see Threads above) or blank if unclassified;
+     `evidence` cites the run / finding and ENDS in `(YYYY-MM-DD)` — the date
+     status was last touched (initial entry, status flip, or fresh supporting
+     evidence). The trailing date acts as last-updated.
+     Carry over every still-relevant row from the previous report's Active AND
+     Archived tables (legacy single `## 🧠 Hypotheses` heading also counts as
+     Active), update status + date where today's work bears on it, and add
+     rows for hypotheses raised today.
+     Archival rule — at write time, any row whose status is NOT `open` AND
+     whose evidence date is ≥3 days older than DATE AND was not touched today
+     moves to the Archived table. Archived rows stay one read away but no
+     longer clutter the active scan. Do NOT re-promote an archived row unless
+     today's work flips its status — in which case it reappears in Active with
+     today's date and the corresponding Finding (see flip-coupling below).
+     Flip-coupling — every status flip between consecutive reports (in either
+     direction: `open`→`supported`, `open`→`refuted`, `supported`→`refuted`,
+     `refuted`→`supported`, `archived`→back-to-active via re-flip) MUST surface
+     as a Findings conclusion bullet citing the run that caused it:
+       · `open`→`supported`         → `[confirmed]` Finding
+       · `open`→`refuted`           → `[refuted-prior]` Finding
+       · `supported`→`refuted`      → `[refuted-prior]` Finding
+       · `refuted`→`supported`      → `[refuted-prior]` Finding (the earlier
+                                       refutation is itself being overturned)
+       · `supported`→`supported`    → no flip, no required Finding (status
+                                       unchanged; only update the date if new
+                                       evidence was added)
+     Before emitting the ledger, diff today's status vector against the
+     previous report's and assert every diff row has a matching Findings
+     bullet — if any flip is missing, draft the Finding first then return to
+     the ledger.
+     Empty cases — no active hypotheses → Active table = `N/A`; no archived
+     hypotheses → omit the Archived heading and table entirely.
+     Pipe sanitization (CRITICAL) — math notation with vertical bars is the
+     #1 row-breaking offender (e.g. `|err|`, `|∂Δq/∂a|`, `||x||_F`,
+     absolute-value bars, OR-bars `X | Y`). The escape `\|` is not a safe
+     bet: the Markdown→Notion conversion has been observed to double-escape
+     it to `\\|`, which Notion then re-parses as `\\` followed by an
+     unescaped `|`, breaking the row. This has corrupted 3 of the last 4
+     reports.
+     Strict rule inside TABLE CELLS only (Hypotheses + Decisions; prose
+     outside tables is unaffected): rewrite vertical-bar notation in prose
+     or with Unicode norm bars, do NOT rely on `\|`:
+       `|err|`         → `abs(err)` / `err magnitude` / Unicode `‖err‖` if
+                          you really mean the norm
+       `|∂Δq/∂a|`     → `Frobenius norm of ∂Δq/∂a` / `‖∂Δq/∂a‖`
+       `||x||_F`      → `‖x‖_F`
+       `X | Y`         → `X / Y` or `X or Y`
+     After drafting both tables, scan every cell between column-separator
+     pipes; any remaining un-escaped `|` is a bug, rewrite the cell.
    - Decisions — the `## 🧭 Decisions` table (columns decision · alternatives ·
      rationale). Log only real decisions: a path taken over a *named*
      alternative. Routine actions are not decisions. None → `N/A`.
@@ -231,8 +296,28 @@ PY
      previous-report read) into the `## 🔄 Yesterday's Next` checklist, one line
      per prior Next item: `[x]` done (note where it closed), `[~]` partial (note
      what remains), `[ ]` carried over. Every `[~]` / `[ ]` item must also appear
-     in today's `## ⏭️ Next` so nothing is silently dropped. No previous report
-     → `N/A`.
+     in today's `## ⏭️ Next` so nothing is silently dropped.
+     Carry-counting — for every `[ ]` (still pending) item, look up the SAME
+     item in the previous report's `## 🔄 Yesterday's Next` (the checklist, not
+     the Next section). If that entry already carries a `(carry × K)`
+     annotation, today is `(carry × K+1 — <reason>)`. If it was a bare `[ ]`
+     yesterday with no annotation, today is `(carry × 2 — <reason>)`. If the
+     item was `[x]` or `[~]` or did not exist in yesterday's checklist, the
+     counter starts fresh — no annotation required today (it is `carry × 1`).
+     `<reason>` is mandatory and is one short clause from:
+       `blocked on <X>` — depends on an external/upstream event named X.
+       `deprioritized for <Y>` — explicitly traded against Y, which IS being
+         worked on.
+       `still-relevant, no progress` — neither blocked nor traded, just not
+         touched. Honest signal that this item is drifting.
+     Stale escalation — any `[ ]` item whose carry count reaches K+1 ≥ 3 MUST
+     also be written into today's `## 🚧 Issues / Blockers` (under the matching
+     track) as a top-level bullet, so a long-stale Next item can no longer
+     silently roll forward. The bullet text restates the item plus its
+     `(carry × N — <reason>)` annotation; if the reason is
+     `still-relevant, no progress`, flag it as `(carry × N — drifting, decide
+     to commit or drop)` to force the human to take a stance next session.
+     No previous report → `N/A`.
    - Reproducibility roster — the `## 📌 Reproducibility` section collects one
      compact bullet per run, sweep, eval or diagnostic executed today. It is the
      COMPLETE run roster: a run that produced numbers but no headline Finding is
@@ -384,6 +469,11 @@ PY
        `[!caution]` — same.
        `Empty quote` — symptom of GitHub admonition being parsed as blockquote.
        `{color=`    — block-level colour attribute on a bullet (step d).
+       `\\|`        — double-escaped pipe inside a Hypotheses/Decisions cell
+                      (the `\|` escape got doubled during conversion). Means
+                      one or more rows split into phantom columns. Fix at the
+                      source by rewriting `|...|` notation as prose / Unicode
+                      `‖...‖` per the table-cell rule, NOT by re-escaping.
      If any of these strings appears, the transform produced bad text:
      redo the transform on the body, replace_content again, and only
      return "synced" once the post-fetch scan is clean. Add
@@ -448,3 +538,12 @@ PY
 - The session digest is sourced from on-disk transcripts (not live context),
   which is what lets the whole job run in the background. It reads every
   same-day session *.jsonl under TRANSCRIPT_DIR, up to dispatch time.
+- Hypotheses are kept as two tables — Active (current ledger, scanned daily)
+  and Archived (resolved with status unchanged ≥3 days, kept one read away).
+  The Archived table is built by the worker, not by hand; status flips
+  re-promote a row to Active automatically.
+- Threads: `$ROOT/.claude/daily-report-threads.txt` is a one-line-per-thread
+  registry the worker reads and may append to. Format
+  `#thread-name — short description`. Threads are how multi-day research
+  arcs become scannable longitudinally — Hypotheses carry a `thread` column,
+  and Findings / Issues / Next bullets may end with the same `#tag` suffix.
