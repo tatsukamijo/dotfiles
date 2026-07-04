@@ -36,7 +36,7 @@ case "$(uname -s)" in
 esac
 
 # Stow packages: shared set + an OS-specific set. Deliberately NOT every dir.
-COMMON_PKGS=(claude nvim tmux)
+COMMON_PKGS=(claude nvim tmux miyabi)
 case "$OS_KIND" in
   macos) OS_PKGS=(zsh skhd yabai hammerspoon starship borders) ;;
   linux) OS_PKGS=(bash pueue clipimg) ;;
@@ -178,6 +178,9 @@ backup_existing_targets() {
   for d in commands skills hooks; do
     backup_if_real "$HOME/.claude/$d"
   done
+  # Shared bin (miyabi stow package)
+  backup_if_real "$HOME/.local/bin/miyabi"
+  backup_if_real "$HOME/.local/bin/ssh-totp"
   # OS-specific targets
   if [ "$OS_KIND" = linux ]; then
     backup_if_real "$HOME/.bashrc"

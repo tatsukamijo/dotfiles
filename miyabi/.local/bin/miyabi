@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Convenience: ssh to miyabi with automatic TOTP entry.
+#   miyabi              # interactive login
+#   miyabi hostname     # run a command and exit
+# Equivalent to `ssh miyabi ...` once the ssh() wrapper in .bashrc is loaded;
+# provided as a standalone command for non-interactive shells and scripts.
+exec ssh-totp ssh miyabi "$@"

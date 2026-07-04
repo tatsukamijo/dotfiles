@@ -112,6 +112,28 @@ eval "$(pixi completion --shell zsh)"
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 
 # ----------------------------------------------------------------------------
+# miyabi HPC: auto-answer the TOTP "Verification code:" prompt for plain
+# ssh/scp/sftp (see the `miyabi` stow package). Commands whose args reference the
+# miyabi host go through ssh-totp; everything else hits the real binary.
+# ----------------------------------------------------------------------------
+if [ -x "$HOME/.local/bin/ssh-totp" ]; then
+    _miyabi_wrap() {
+        local bin="$1"; shift
+        local a
+        for a in "$@"; do
+            case "$a" in
+                miyabi|miyabi:*|miyabi-g*|*@miyabi*|*miyabi*.jcahpc.jp*)
+                    command ssh-totp "$bin" "$@"; return ;;
+            esac
+        done
+        command "$bin" "$@"
+    }
+    ssh()  { _miyabi_wrap ssh  "$@"; }
+    scp()  { _miyabi_wrap scp  "$@"; }
+    sftp() { _miyabi_wrap sftp "$@"; }
+fi
+
+# ----------------------------------------------------------------------------
 # Local Configuration
 # ----------------------------------------------------------------------------
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local

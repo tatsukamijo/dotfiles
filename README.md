@@ -10,7 +10,7 @@ The installer detects the OS and stows only the relevant packages.
 
 | Scope | Packages |
 |-------|----------|
-| **Shared** (both OSes) | `claude`, `nvim`, `tmux` |
+| **Shared** (both OSes) | `claude`, `nvim`, `tmux`, `miyabi` |
 | **macOS only** | `zsh`, `skhd`, `yabai`, `hammerspoon`, `starship` |
 | **Linux only** | `bash`, `pueue`, `clipimg` |
 
@@ -104,6 +104,44 @@ tasks complete, with success/failure status and truncated logs.
 - Emails are grouped into threads by pueue group.
 - Set `PUEUE_NOTIFY_ONLY_FAILURE=true` to notify only on failures.
 - Reset threads: `rm ~/.local/share/pueue-notify/threads.json`
+
+### 🔐 miyabi: Auto-TOTP SSH/SCP Login (Linux + macOS)
+
+Types the miyabi TOTP code (RFC 6238, computed locally) at the
+`Verification code:` prompt so `ssh`/`scp`/`sftp` don't stop to ask. Two pieces:
+
+- `ssh-totp <cmd> ...` — runs any command under a pty and answers the prompt,
+  then proxies I/O untouched (file data and login shells pass through normally).
+  `miyabi` is a convenience wrapper for `ssh-totp ssh miyabi`.
+- `.bashrc` `ssh()`/`scp()`/`sftp()` functions route commands whose args point
+  at the miyabi host through `ssh-totp`; everything else hits the real binary.
+
+Pure Python stdlib — no `oathtool`, `expect`, or sudo, and no OpenSSH ≥ 8.4 /
+`SSH_ASKPASS` dependency (the pty answers the prompt itself).
+
+1. Store the base32 TOTP secret (**not** tracked by git) at
+   `~/.config/miyabi/secret`, `chmod 600`:
+   ```bash
+   umask 077; mkdir -p ~/.config/miyabi
+   printf '%s\n' 'YOURBASE32SECRET' > ~/.config/miyabi/secret
+   chmod 600 ~/.config/miyabi/secret
+   ```
+2. Ensure the ssh key + `Host miyabi` alias exist in `~/.ssh/config`.
+3. Use plain commands (in an interactive bash/zsh shell), or `miyabi` from scripts:
+   ```bash
+   ssh miyabi                       # interactive login
+   scp data.tar miyabi:~/           # copy up
+   scp miyabi:~/out.log .           # copy down
+   miyabi hostname                  # standalone wrapper, no shell function needed
+   ```
+
+> Miyabi sets `DISALLOW_REUSE`, so a code can't be used twice: `ssh-totp` records
+> the last window it spent and waits for the next 30 s window before a
+> back-to-back second connection — expect an occasional pause.
+
+> The secret lives beside the ssh client, so 2FA effectively collapses to one
+> factor on this host — keep the file locked down, and check your HPC center's
+> acceptable-use policy before automating its 2FA.
 
 ## 🤖 Claude Code Global Config (`claude/` package)
 

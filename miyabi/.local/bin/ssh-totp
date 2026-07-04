@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""Run a command (ssh/scp/sftp/...) under a pty, auto-answering the miyabi TOTP
+"Verification code:" prompt from ~/.config/miyabi/secret.
+
+Interactive `ssh miyabi` shells and scp/sftp transfers work exactly as normal —
+the code is typed for you. Matching is disarmed once auth succeeds, so later
+session output can't trigger a spurious code. For non-interactive invocations the
+pty's ONLCR is turned off so piped output keeps bare LFs; interactive shells keep
+ONLCR so the terminal doesn't staircase.
+
+    ssh-totp ssh miyabi
+    ssh-totp scp file.txt miyabi:~/
+
+Limitations (a pty multiplexes everything onto one stream):
+  - Capturing output — `x=$(ssh miyabi hostname)` — also captures ssh's banner
+    and the "Verification code:" prompt line; prefer scp/sftp for data you parse.
+  - Piping data to a *remote* command (`tar c | ssh miyabi 'tar x'`) isn't
+    supported (no clean stdin EOF over the pty); use scp/rsync.
+
+Pure stdlib: no oathtool, no expect, no sudo, and no OpenSSH >= 8.4 / SSH_ASKPASS
+dependency (the pty answers the prompt itself).
+"""
+import base64, hmac, hashlib, struct, time, os, sys, pty, select, tty, termios, fcntl, signal, re
+
+SECRET_FILE = os.path.expanduser(os.environ.get("MIYABI_SECRET_FILE", "~/.config/miyabi/secret"))
+STATE_DIR = os.path.dirname(SECRET_FILE)
+STATE_FILE = os.path.join(STATE_DIR, ".last_window")
+LOCK_FILE = os.path.join(STATE_DIR, ".totp.lock")
+MAX_OTP = 3   # stop after this many rejected codes (wrong secret / clock skew)
+STEP = 30     # TOTP time step (seconds)
+
+
+def totp(secret, t, digits=6):
+    s = secret.strip().upper().replace(" ", "")
+    key = base64.b32decode(s + "=" * (-len(s) % 8))
+    msg = struct.pack(">Q", int(t) // STEP)
+    h = hmac.new(key, msg, hashlib.sha1).digest()
+    o = h[-1] & 0x0F
+    return str((struct.unpack(">I", h[o:o + 4])[0] & 0x7FFFFFFF) % 10 ** digits).zfill(digits)
+
+
+def _load_window():
+    try:
+        return int(open(STATE_FILE).read().strip())
+    except (OSError, ValueError):
+        return -1
+
+
+def _save_window(w):
+    try:
+        with open(STATE_FILE, "w") as f:
+            f.write(str(w))
+    except OSError:
+        pass
+
+
+def fresh_code(secret, already_sent):
+    """A TOTP code not already spent this window (miyabi sets DISALLOW_REUSE).
+    An exclusive lock held across the wait serializes concurrent connections
+    onto distinct 30s windows so they never present the same code."""
+    lock = open(LOCK_FILE, "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        last_w = _load_window()
+        notified = False
+        while True:
+            now = time.time()
+            w = int(now) // STEP
+            code = totp(secret, now)
+            if w != last_w and code not in already_sent:
+                _save_window(w)
+                return code
+            if not notified:
+                sys.stderr.write("ssh-totp: waiting ~%ds for a fresh TOTP window "
+                                 "(avoiding reuse)...\n" % (STEP - int(now) % STEP))
+                sys.stderr.flush()
+                notified = True
+            time.sleep(0.3)
+    finally:
+        lock.close()
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit("usage: ssh-totp <command> [args...]")
+    try:
+        with open(SECRET_FILE) as f:
+            secret = f.read().strip()
+    except FileNotFoundError:
+        sys.exit("ssh-totp: secret not found at %s" % SECRET_FILE)
+
+    argv = sys.argv[1:]
+    interactive = sys.stdin.isatty()
+    pid, master = pty.fork()
+    if pid == 0:                                   # child: fds 0/1/2 are the pty slave
+        if not interactive:                        # scripted/piped: drop ONLCR so captured
+            try:                                   # output keeps bare LFs. An interactive shell
+                a = termios.tcgetattr(1)           # keeps ONLCR, else the terminal staircases.
+                a[1] &= ~termios.OPOST
+                termios.tcsetattr(1, termios.TCSANOW, a)
+            except OSError:
+                pass
+        os.execvp(argv[0], argv)
+        os._exit(127)
+
+    old = None
+    watching = [master]
+    if interactive:
+        old = termios.tcgetattr(0)
+        tty.setraw(0)
+        try:
+            fcntl.ioctl(master, termios.TIOCSWINSZ,
+                        fcntl.ioctl(0, termios.TIOCGWINSZ, b"\x00" * 8))
+        except OSError:
+            pass
+        signal.signal(signal.SIGWINCH, lambda *_: fcntl.ioctl(
+            master, termios.TIOCSWINSZ, fcntl.ioctl(0, termios.TIOCGWINSZ, b"\x00" * 8)))
+        watching.append(0)
+
+    def cleanup(*_):
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    signal.signal(signal.SIGINT, cleanup)
+    signal.signal(signal.SIGTERM, cleanup)
+
+    prompt = re.compile(rb"[Vv]erification code[^:]*:")
+    tail, sent, authed = b"", [], False
+    try:
+        while True:
+            try:
+                r, _, _ = select.select(watching, [], [])
+            except select.error:
+                continue
+            if master in r:
+                try:
+                    data = os.read(master, 4096)
+                except OSError:                    # child gone (EIO on master)
+                    break
+                if not data:
+                    break
+                try:
+                    os.write(1, data)
+                except BrokenPipeError:
+                    cleanup()
+                    break
+                if not authed:
+                    tail = (tail + data)[-256:]
+                    if prompt.search(tail):
+                        tail = b""
+                        if len(sent) >= MAX_OTP:
+                            sys.stderr.write("ssh-totp: TOTP rejected %d times — check "
+                                             "~/.config/miyabi/secret and the system clock\n" % len(sent))
+                            cleanup()
+                            break
+                        if sent:
+                            sys.stderr.write("ssh-totp: verification code rejected "
+                                             "(attempt %d), retrying...\n" % len(sent))
+                            sys.stderr.flush()
+                        code = fresh_code(secret, sent)
+                        os.write(master, (code + "\r").encode())
+                        sent.append(code)
+                    elif sent:                     # a code was accepted; stop scanning
+                        authed = True
+            if 0 in r:
+                data = os.read(0, 4096)
+                if data:
+                    os.write(master, data)
+                else:
+                    watching.remove(0)
+    finally:
+        if old:
+            termios.tcsetattr(0, termios.TCSADRAIN, old)
+
+    _, status = os.waitpid(pid, 0)
+    sys.exit(os.waitstatus_to_exitcode(status))
+
+
+if __name__ == "__main__":
+    main()

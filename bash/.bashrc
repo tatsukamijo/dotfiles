@@ -522,6 +522,27 @@ if [ -n "$SSH_AUTH_SOCK" ] && [ "$SSH_AUTH_SOCK" != "$HOME/.ssh/ssh_auth_sock" ]
 fi
 export SSH_AUTH_SOCK="$HOME/.ssh/ssh_auth_sock"
 
+# miyabi HPC: auto-answer the TOTP "Verification code:" prompt for plain
+# ssh/scp/sftp. Commands whose args reference the miyabi host are routed through
+# ssh-totp (a pty driver that types the current code); everything else falls
+# straight through to the real binary. Needs the secret at ~/.config/miyabi/secret.
+if [ -x "$HOME/.local/bin/ssh-totp" ]; then
+    _miyabi_wrap() {
+        local bin="$1"; shift
+        local a
+        for a in "$@"; do
+            case "$a" in
+                miyabi|miyabi:*|miyabi-g*|*@miyabi*|*miyabi*.jcahpc.jp*)
+                    command ssh-totp "$bin" "$@"; return ;;
+            esac
+        done
+        command "$bin" "$@"
+    }
+    ssh()  { _miyabi_wrap ssh  "$@"; }
+    scp()  { _miyabi_wrap scp  "$@"; }
+    sftp() { _miyabi_wrap sftp "$@"; }
+fi
+
 # Pixi
 export PATH="$HOME/.pixi/bin:$PATH"
 export PATH="$HOME/.pixi/envs/nodejs/bin:$PATH"
