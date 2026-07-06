@@ -35,6 +35,7 @@
   "alwaysThinkingEnabled": true,
   "effortLevel": "xhigh",
   "ultracode": true,
+  "tui": "fullscreen",
   "skipWorkflowUsageWarning": true,
   "theme": "dark-ansi",
   "agentPushNotifEnabled": true,
