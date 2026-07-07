@@ -80,14 +80,34 @@ def fresh_code(secret, already_sent):
         lock.close()
 
 
-def main():
-    if len(sys.argv) < 2:
-        sys.exit("usage: ssh-totp <command> [args...]")
+def read_secret():
     try:
         with open(SECRET_FILE) as f:
-            secret = f.read().strip()
+            return f.read().strip()
     except FileNotFoundError:
         sys.exit("ssh-totp: secret not found at %s" % SECRET_FILE)
+
+
+def askpass(promptn):
+    """SSH_ASKPASS mode: answer one prompt and exit. Used as ssh's askpass helper
+    for transports that can't go through a pty (notably rsync, whose protocol
+    needs ssh's stdin/stdout to stay clean pipes)."""
+    low = promptn.lower()
+    if "verification code" in low:
+        sys.stdout.write(fresh_code(read_secret(), []) + "\n")
+        return 0
+    if "(yes/no" in low or "fingerprint" in low:   # first-connect host key
+        sys.stdout.write("yes\n")
+        return 0
+    return 1                                        # e.g. key passphrase: can't answer
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit("usage: ssh-totp <command> [args...]   |   ssh-totp --askpass <prompt>")
+    if sys.argv[1] == "--askpass":
+        sys.exit(askpass(sys.argv[2] if len(sys.argv) > 2 else ""))
+    secret = read_secret()
 
     argv = sys.argv[1:]
     interactive = sys.stdin.isatty()

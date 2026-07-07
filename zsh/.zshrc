@@ -131,6 +131,24 @@ if [ -x "$HOME/.local/bin/ssh-totp" ]; then
     ssh()  { _miyabi_wrap ssh  "$@"; }
     scp()  { _miyabi_wrap scp  "$@"; }
     sftp() { _miyabi_wrap sftp "$@"; }
+    # rsync can't use the pty (its protocol needs clean pipes over ssh), so route
+    # miyabi transfers through ssh with an SSH_ASKPASS helper instead.
+    rsync() {
+        local a
+        for a in "$@"; do
+            case "$a" in
+                miyabi:*|miyabi-g*:*|*@miyabi*:*|*miyabi*.jcahpc.jp:*)
+                    local rsh=ssh
+                    command -v setsid >/dev/null 2>&1 && rsh="setsid -w ssh"
+                    SSH_ASKPASS="$HOME/.local/bin/miyabi-askpass" \
+                    SSH_ASKPASS_REQUIRE=force \
+                    DISPLAY="${DISPLAY:-:0}" \
+                    command rsync -e "$rsh" "$@"
+                    return ;;
+            esac
+        done
+        command rsync "$@"
+    }
 fi
 
 # ----------------------------------------------------------------------------

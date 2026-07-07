@@ -105,19 +105,20 @@ tasks complete, with success/failure status and truncated logs.
 - Set `PUEUE_NOTIFY_ONLY_FAILURE=true` to notify only on failures.
 - Reset threads: `rm ~/.local/share/pueue-notify/threads.json`
 
-### 🔐 miyabi: Auto-TOTP SSH/SCP Login (Linux + macOS)
+### 🔐 miyabi: Auto-TOTP SSH/SCP/rsync Login (Linux + macOS)
 
 Types the miyabi TOTP code (RFC 6238, computed locally) at the
-`Verification code:` prompt so `ssh`/`scp`/`sftp` don't stop to ask. Two pieces:
+`Verification code:` prompt so `ssh`/`scp`/`sftp`/`rsync` don't stop to ask.
 
-- `ssh-totp <cmd> ...` — runs any command under a pty and answers the prompt,
-  then proxies I/O untouched (file data and login shells pass through normally).
-  `miyabi` is a convenience wrapper for `ssh-totp ssh miyabi`.
-- `.bashrc` `ssh()`/`scp()`/`sftp()` functions route commands whose args point
-  at the miyabi host through `ssh-totp`; everything else hits the real binary.
+- `ssh-totp <cmd> ...` — runs a command under a pty and answers the prompt, then
+  proxies I/O (file data and login shells pass through normally). `miyabi` is a
+  convenience wrapper for `ssh-totp ssh miyabi`.
+- `ssh()`/`scp()`/`sftp()` shell functions (bash + zsh) route miyabi-host
+  commands through `ssh-totp`; everything else hits the real binary.
+- `rsync()` can't use the pty (its protocol needs clean pipes over ssh), so it
+  routes through ssh with `miyabi-askpass` as `SSH_ASKPASS` instead.
 
-Pure Python stdlib — no `oathtool`, `expect`, or sudo, and no OpenSSH ≥ 8.4 /
-`SSH_ASKPASS` dependency (the pty answers the prompt itself).
+Pure Python stdlib — no `oathtool`, `expect`, or sudo.
 
 1. Store the base32 TOTP secret (**not** tracked by git) at
    `~/.config/miyabi/secret`, `chmod 600`:
@@ -132,6 +133,7 @@ Pure Python stdlib — no `oathtool`, `expect`, or sudo, and no OpenSSH ≥ 8.4 
    ssh miyabi                       # interactive login
    scp data.tar miyabi:~/           # copy up
    scp miyabi:~/out.log .           # copy down
+   rsync -av ./run/ miyabi:~/run/   # incremental sync
    miyabi hostname                  # standalone wrapper, no shell function needed
    ```
 

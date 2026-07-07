@@ -1,0 +1,6 @@
+#!/bin/sh
+# SSH_ASKPASS helper for connections that can't go through a pty — notably rsync,
+# whose protocol needs ssh's stdin/stdout to stay clean pipes. ssh calls this with
+# the prompt as $1; ssh-totp answers the miyabi "Verification code:" prompt (and
+# "yes" for a first-connect host key), reusing the same DISALLOW_REUSE handling.
+exec "$(dirname "$0")/ssh-totp" --askpass "$1"
