@@ -130,6 +130,29 @@ ensure_submodules() {
 }
 
 #------------------------------------------------------------------------------
+# 4b. git clean filter: strip the machine-local `model` key from Claude Code's
+#     settings.json so `/model` switches never churn the repo. git config lives
+#     in .git/config (untracked), so it must be re-established on every clone.
+#------------------------------------------------------------------------------
+ensure_git_filters() {
+  if [ ! -d "$DOTFILES_DIR/.git" ]; then
+    warn "$DOTFILES_DIR is not a git repo; skipping git filter setup"
+    return
+  fi
+  local script="$DOTFILES_DIR/scripts/git-clean-model.sh"
+  if [ ! -x "$script" ]; then
+    warn "git-clean-model.sh missing or not executable; skipping filter setup"
+    return
+  fi
+  if [ "$(git -C "$DOTFILES_DIR" config --get filter.claudemodel.clean)" = "$script" ]; then
+    skip "git clean filter (claudemodel) already configured"
+  else
+    git -C "$DOTFILES_DIR" config filter.claudemodel.clean "$script"
+    ok "configured git clean filter (claudemodel)"
+  fi
+}
+
+#------------------------------------------------------------------------------
 # 5. Pre-create dirs that must NOT become a single stow symlink
 #    (we want stow to fold at file-level inside them, not at the dir level)
 #------------------------------------------------------------------------------
@@ -292,6 +315,7 @@ main() {
   ensure_pixi_tools
   ensure_claude_code
   ensure_submodules
+  ensure_git_filters
   ensure_real_dirs
   backup_existing_targets
   run_stow

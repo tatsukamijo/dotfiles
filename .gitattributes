@@ -1,0 +1,4 @@
+# Strip the machine-local `model` key from Claude Code's settings on the way into
+# git, so `/model` switches never show up as a tracked diff. Requires the filter
+# to be configured per clone (install.sh does this): see scripts/git-clean-model.sh.
+claude/.claude/settings.json filter=claudemodel
