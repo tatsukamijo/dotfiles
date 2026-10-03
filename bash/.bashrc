@@ -569,8 +569,13 @@ export PATH="$HOME/.pixi/envs/nodejs/bin:$PATH"
 # fi
 
 if command -v pixi >/dev/null 2>&1; then
-    _pixi_comp="/tmp/pixi-completion-$USER.bash"
+    # Cache under XDG cache dir, not /tmp: on shared login nodes (e.g. NYU
+    # torch) /tmp is a small tmpfs that fills up, so the write failed, the
+    # 0-byte file was never -s, and every shell start re-ran `pixi completion`
+    # (a multi-second hang). XDG_CACHE_HOME falls back to ~/.cache.
+    _pixi_comp="${XDG_CACHE_HOME:-$HOME/.cache}/pixi-completion.bash"
     if [ ! -s "$_pixi_comp" ]; then
+        mkdir -p "$(dirname "$_pixi_comp")" 2>/dev/null
         timeout 3 pixi completion --shell bash > "$_pixi_comp" 2>/dev/null || true
     fi
     [ -s "$_pixi_comp" ] && source "$_pixi_comp"
