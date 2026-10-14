@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""Open the ssh ControlMaster for NYU Torch, typing the Entra device-code PIN
+into Arc for you.
+
+Torch logs in with a Microsoft Entra device code:
+
+    Authenticate with PIN F7AFVN4NW at https://login.microsoft.com/device and press ENTER.
+
+`torch-auth <host>` starts `ssh -fN -o ControlMaster=yes <host>` under a pty.
+When that line shows up it opens the device page in a new Arc tab, fills in the
+PIN, clicks through the account picker and the "Are you trying to sign in?"
+screen, waits for "You have signed in", then presses ENTER for you. Once the
+master is up (ControlPersist 8h), every ssh/scp/sftp/rsync to that host reuses
+it and nothing prompts again. If a master is already alive it exits right away.
+
+    torch-auth torch       # usually called by the zsh ssh()/scp()/rsync() wrappers
+
+If the browser needs you (password/MFA, unknown page, timeout), Arc is brought to
+the front. Finish there and the script still notices the success page; or just
+press ENTER in the terminal yourself, as you would without this script.
+
+ENTER goes out a moment after the success page. Sent too soon, Torch's SSSD
+rejects the login and issues a fresh PIN in the same connection, so each new PIN
+waits longer (TORCH_AUTH_ENTER_DELAYS, seconds per attempt). A rejected PIN costs
+only a few seconds; a connection that fails outright adds an sshd penalty, so
+the last delay is one that has always worked. Measured 2026-10-14: 1.5s after the
+success page connects ~2s later every time; 0s works too but the server's 5s
+poll makes it 2-8s.
+
+macOS + Arc only (uses Arc's AppleScript `execute javascript`). Pure stdlib.
+"""
+import fcntl, json, os, pty, re, select, signal, subprocess, sys, threading, time
+
+ACCOUNT = os.environ.get("TORCH_ENTRA_ACCOUNT", "tk3817@nyu.edu")
+TIMEOUT = 180  # seconds to wait for the browser flow before handing over to you
+# success page -> ENTER, per attempt; Torch allows 3 PINs per connection
+ENTER_DELAYS = [float(x) for x in os.environ.get("TORCH_AUTH_ENTER_DELAYS", "1.5,4,12").split(",")][:3]
+POLL = 0.25  # seconds between looks at the page (one osascript call is ~0.1s)
+DEBUG = bool(os.environ.get("TORCH_AUTH_DEBUG"))  # log every poll of the page
+SOCK_DIR = os.path.expanduser("~/.ssh/sockets")
+
+PROMPT = re.compile(rb"Authenticate with PIN ([A-Z0-9]{6,12}) at (https://\S+?) and press ENTER")
+
+# One poll of the device-login tab. Acts on whatever page is showing and returns
+# the stage as JSON. `w.__ta` remembers what we already clicked in this tab so a
+# page is never clicked twice (e.g. no second Continue on a re-render).
+STEP_JS = r"""
+(() => {
+  const w = window, s = (w.__ta = w.__ta || {}), code = %(code)s, acct = %(acct)s;
+  const text = (document.body && document.body.innerText) || "";
+  const vis = e => e && e.offsetParent !== null;
+  const out = (stage) => JSON.stringify({stage, url: location.href, text: text.slice(0, 300)});
+  if (/signed in to .* on your device|may now close this window|You have signed in/i.test(text)) return out("done");
+  if (/code (you entered )?(has expired|is invalid|is incorrect|didn.t work)|expired code/i.test(text)) return out("error");
+  const otc = document.getElementById("otc");
+  if (vis(otc)) {
+    if (s.otc) return out("waiting");
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+    set.call(otc, code);
+    otc.dispatchEvent(new Event("input", {bubbles: true}));
+    otc.dispatchEvent(new Event("change", {bubbles: true}));
+    s.otc = 1;
+    setTimeout(() => document.getElementById("idSIButton9").click(), 100);
+    return out("code");
+  }
+  const pw = document.querySelector("input[type=password]");
+  if (vis(pw)) return out("needs-user");
+  // Account picker: click the tile showing our account.
+  const tiles = [...document.querySelectorAll("[data-test-id], [role=button], [role=link], .table")]
+    .filter(e => vis(e) && e.innerText && e.innerText.toLowerCase().includes(acct.toLowerCase()));
+  if (tiles.length && /pick an account/i.test(text)) {
+    if (s.acct) return out("waiting");
+    s.acct = 1;
+    const pick = tiles[tiles.length - 1];
+    s.tiles = tiles.map(e => e.tagName + "[" + (e.getAttribute("data-test-id") || e.getAttribute("role") || e.className) + "] " + e.innerText.replace(/\s+/g, " ").slice(0, 80));
+    pick.click();
+    return JSON.stringify({stage: "account", url: location.href, text: "picked " + tiles.indexOf(pick) + " of: " + s.tiles.join(" || ") + " ## page: " + text.replace(/\s+/g, " ").slice(0, 400)});
+  }
+  // "Are you trying to sign in to <app>?" -> Continue
+  const btn = document.getElementById("idSIButton9");
+  if (vis(btn) && /trying to sign in/i.test(text)) {
+    if (s.cont) return out("waiting");
+    s.cont = 1; btn.click(); return out("continue");
+  }
+  return out("unknown");
+})()
+"""
+
+# argv: op, tab id, javascript. op "open" makes the tab (url in item 2) and
+# returns its id; op "js" runs javascript in that tab; "close" / "front".
+ARC_SCRIPT = r'''
+on run argv
+  set op to item 1 of argv
+  tell application "Arc"
+    if op is "open" then
+      if (count of windows) is 0 then make new window
+      tell front window
+        make new tab with properties {URL:(item 2 of argv)}
+        return id of active tab
+      end tell
+    end if
+    if op is "front" then
+      activate
+      return ""
+    end if
+    repeat with w in windows
+      repeat with t in tabs of w
+        if id of t is (item 2 of argv) then
+          if op is "close" then
+            close t
+            return ""
+          end if
+          return execute t javascript (item 3 of argv)
+        end if
+      end repeat
+    end repeat
+  end tell
+  return "{\"stage\":\"gone\"}"
+end run
+'''
+
+
+T0 = time.time()
+
+
+def log(msg):
+    if DEBUG:
+        msg = "+%.1fs %s" % (time.time() - T0, msg)
+    sys.stderr.write("\r\033[2mtorch-auth: %s\033[0m\r\n" % msg)
+    sys.stderr.flush()
+
+
+def arc(*args):
+    r = subprocess.run(["osascript", "-e", ARC_SCRIPT, *args],
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr.strip())
+    return r.stdout.strip()
+
+
+def browser_flow(code, url):
+    """Drive the device page; returns the tab once Microsoft says we are signed in."""
+    try:
+        tab = arc("open", url)
+    except Exception as e:  # Arc missing / not scriptable
+        log("couldn't open Arc (%s); enter %s at %s yourself" % (e, code, url))
+        return False
+    js = STEP_JS % {"code": json.dumps(code), "acct": json.dumps(ACCOUNT)}
+    deadline, last, fronted = time.time() + TIMEOUT, None, False
+    while time.time() < deadline:
+        time.sleep(POLL)
+        try:
+            st = json.loads(arc("js", tab, js) or "{}")
+            if isinstance(st, str):  # Arc hands back the JS string JSON-quoted
+                st = json.loads(st)
+        except Exception:
+            continue  # page mid-navigation
+        stage = st.get("stage")
+        if DEBUG:
+            log("%s %s | %s" % (stage, st.get("url"), " ".join(st.get("text", "").split())[:900]))
+        elif stage != last and stage not in ("waiting", "unknown"):
+            log(stage)
+        last = stage
+        if stage == "done":
+            return tab
+        if stage in ("gone", "error"):
+            log("browser flow stopped (%s): %s" % (stage, st.get("text", "")[:120]))
+            return False
+        if stage == "needs-user" and not fronted:
+            log("sign-in needs you in Arc (password/MFA)")
+            arc("front")
+            fronted = True
+    log("timed out; finish in Arc, then press ENTER here")
+    try:
+        arc("front")
+    except Exception:
+        pass
+    return False
+
+
+def master_alive(host):
+    return subprocess.run(["ssh", "-O", "check", host],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+def main():
+    if len(sys.argv) != 2:
+        sys.exit("usage: torch-auth <host>")
+    host = sys.argv[1]
+    if master_alive(host):
+        return 0
+    # Serialize concurrent callers (e.g. two terminals) onto one login.
+    os.makedirs(SOCK_DIR, exist_ok=True)
+    lock = open(os.path.join(SOCK_DIR, ".torch-auth-%s.lock" % host), "w")
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    if master_alive(host):
+        return 0
+
+    pid, master = pty.fork()
+    if pid == 0:
+        os.execvp("ssh", ["ssh", "-fN", "-o", "ControlMaster=yes",
+                          # skip the gssapi methods Torch offers first (no Kerberos here)
+                          "-o", "PreferredAuthentications=keyboard-interactive",
+                          "-o", "LogLevel=" + ("VERBOSE" if DEBUG else "INFO"), host])
+        os._exit(127)
+
+    def kill(*_):
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    signal.signal(signal.SIGINT, kill)
+    signal.signal(signal.SIGTERM, kill)
+
+    # Set by the user's own keypress or by the browser thread; whichever comes
+    # first presses ENTER, the other does nothing (no stray ENTER into ssh).
+    entered = threading.Event()
+    wlock = threading.Lock()
+
+    def press_enter():
+        with wlock:
+            if not entered.is_set():
+                entered.set()
+                if DEBUG:
+                    log("ENTER sent")
+                os.write(master, b"\r")
+
+    def run_flow(code, url, attempt):
+        tab = browser_flow(code, url)
+        if tab:
+            time.sleep(ENTER_DELAYS[attempt - 1])
+            press_enter()
+            try:
+                arc("close", tab)
+            except Exception:
+                pass
+
+    watching, tail, attempts = [master], b"", 0
+    if sys.stdin.isatty():
+        watching.append(0)
+    while True:
+        try:
+            r, _, _ = select.select(watching, [], [])
+        except InterruptedError:
+            continue
+        if master in r:
+            try:
+                data = os.read(master, 4096)
+            except OSError:
+                break
+            if not data:
+                break
+            os.write(2, data)
+            tail = (tail + data)[-512:]
+            m = PROMPT.search(tail)
+            if m and DEBUG:
+                log("PIN prompt")
+            if m:
+                tail = b""
+                attempts += 1
+                entered.clear()
+                if attempts > len(ENTER_DELAYS):  # out of tries; this PIN is yours
+                    log("automatic login failed twice; do this PIN by hand")
+                    continue
+                code, url = m.group(1).decode(), m.group(2).decode()
+                threading.Thread(target=run_flow, args=(code, url, attempts), daemon=True).start()
+        if 0 in r:
+            data = os.read(0, 4096)
+            if not data:
+                watching.remove(0)
+            elif b"\n" in data or b"\r" in data:
+                press_enter()
+
+    _, status = os.waitpid(pid, 0)
+    rc = os.waitstatus_to_exitcode(status)
+    if rc == 0:
+        log("master up for %s" % host)
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

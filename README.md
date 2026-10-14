@@ -11,7 +11,7 @@ The installer detects the OS and stows only the relevant packages.
 | Scope | Packages |
 |-------|----------|
 | **Shared** (both OSes) | `claude`, `nvim`, `tmux`, `miyabi` |
-| **macOS only** | `zsh`, `skhd`, `yabai`, `hammerspoon`, `starship` |
+| **macOS only** | `zsh`, `skhd`, `yabai`, `hammerspoon`, `starship`, `torch` |
 | **Linux only** | `bash`, `pueue`, `clipimg` |
 
 Not stowed: `.submodules/` (git submodules), `docs/`, `.archive/`.
@@ -104,6 +104,20 @@ tasks complete, with success/failure status and truncated logs.
 - Emails are grouped into threads by pueue group.
 - Set `PUEUE_NOTIFY_ONLY_FAILURE=true` to notify only on failures.
 - Reset threads: `rm ~/.local/share/pueue-notify/threads.json`
+
+### 🔐 torch: Auto Entra Device-Code Login (macOS + Arc)
+
+NYU Torch asks for a Microsoft device-code PIN (`Authenticate with PIN XXXX at
+https://login.microsoft.com/device and press ENTER.`). `torch-auth <host>` opens
+the ssh ControlMaster under a pty, and in a new Arc tab enters the PIN, picks the
+account (`TORCH_ENTRA_ACCOUNT`, default `tk3817@nyu.edu`), clicks Continue, waits
+for "You have signed in", then presses ENTER 1.5s later (`TORCH_AUTH_ENTER_DELAYS`
+=`1.5,4,12`: if the server answers with a fresh PIN, the next one waits longer).
+After three PINs it leaves the next one to you. Whole login is ~10-15s. The zsh `ssh`/`scp`/`sftp`/
+`rsync` wrappers call it for `torch`/`torch-any` when no master is alive, so
+everything after that reuses the 8h `ControlPersist` connection. Password/MFA or
+an unexpected page brings Arc to the front; you can always finish by hand and
+press ENTER. Debug: `TORCH_AUTH_DEBUG=1 torch-auth torch`.
 
 ### 🔐 miyabi: Auto-TOTP SSH/SCP/rsync Login (Linux + macOS)
 

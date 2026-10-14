@@ -116,10 +116,27 @@ export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 # ssh/scp/sftp (see the `miyabi` stow package). Commands whose args reference the
 # miyabi host go through ssh-totp; everything else hits the real binary.
 # ----------------------------------------------------------------------------
+#
+# NYU Torch: Entra device-code login. Before ssh/scp/sftp/rsync to torch, make
+# sure the ControlMaster is up; if not, torch-auth opens it and types the PIN
+# into Arc (see the `torch` stow package). The command itself then runs plain.
+# ----------------------------------------------------------------------------
+_torch_ensure() {
+    [ -x "$HOME/.local/bin/torch-auth" ] || return 0
+    local a h
+    for a in "$@"; do
+        case "$a" in -O*) return 0 ;; esac   # ssh -O check/exit: leave alone
+        h="${a%%:*}"; h="${h##*@}"
+        case "$h" in
+            torch|torch-any) command torch-auth "$h"; return 0 ;;
+        esac
+    done
+}
 if [ -x "$HOME/.local/bin/ssh-totp" ]; then
     _miyabi_wrap() {
         local bin="$1"; shift
         local a
+        _torch_ensure "$@"
         for a in "$@"; do
             case "$a" in
                 miyabi|miyabi:*|miyabi-g*|*@miyabi*|*miyabi*.jcahpc.jp*)
@@ -147,6 +164,7 @@ if [ -x "$HOME/.local/bin/ssh-totp" ]; then
                     return ;;
             esac
         done
+        _torch_ensure "$@"
         command rsync "$@"
     }
 fi
