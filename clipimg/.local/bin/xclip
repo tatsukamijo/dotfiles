@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# xclip shim. With a real xclip and an X display ($DISPLAY or -display), hands
+# off to it unchanged. Otherwise (no X server, e.g. HPC login nodes) it serves
+# the file-backed clipboard that clipimg-recv writes, so Claude Code's Ctrl+V
+# image paste — which shells out to
+# `xclip -selection clipboard -t TARGETS|image/png -o` — works after ⌘⌃V on
+# the Mac. Only the image/png CLIPBOARD target is held: other reads report
+# "not available" like an empty clipboard, and anything else fails as if
+# xclip were not installed (exit 127).
+set -uo pipefail
+
+want_real="${DISPLAY:-}"
+for a in "$@"; do
+    case "$a" in -d|-di|-dis|-disp|-displ|-displa|-display) want_real=1 ;; esac
+done
+# The guard stops two copies of this shim on PATH from exec'ing each other.
+if [ -n "$want_real" ] && [ -z "${CLIPIMG_XCLIP_SHIM:-}" ]; then
+    export CLIPIMG_XCLIP_SHIM=1
+    self_dir="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+    IFS=: read -ra dirs <<< "$PATH"
+    for d in "${dirs[@]}"; do
+        [ -x "$d/xclip" ] || continue
+        [ "$(cd "$(dirname "$(readlink -f "$d/xclip")")" && pwd)" = "$self_dir" ] && continue
+        exec "$d/xclip" "$@"
+    done
+fi
+
+store="$HOME/.cache/clipimg/clipboard.png"
+sel=primary target="" mode=in files=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -sel|-selection|-se|-s) sel="${2:-}"; shift ;;
+        -t|-target|-ta)         target="${2:-}"; shift ;;
+        -o|-out)                mode=out ;;
+        -i|-in)                 mode=in ;;
+        -d|-display|-l|-loops)  shift ;;
+        -*)                     ;;
+        *)                      files+=("$1") ;;
+    esac
+    shift
+done
+case "$sel" in [cC]*) sel=clipboard ;; esac
+
+if [ "$mode" = out ] && [ "$sel" = clipboard ] && [ -s "$store" ]; then
+    case "$target" in
+        TARGETS)   printf 'TARGETS\nimage/png\n'; exit 0 ;;
+        image/png) exec cat "$store" ;;
+    esac
+fi
+if [ "$mode" = out ] && { [ -z "$want_real" ] || [ "$target" = TARGETS ] || [ "${target#image/}" != "$target" ]; }; then
+    echo "Error: target ${target:-STRING} not available" >&2
+    exit 1
+fi
+
+if [ "$mode" = in ] && [ "$sel" = clipboard ] && [ "$target" = image/png ]; then
+    mkdir -p "${store%/*}"
+    tmp="$(mktemp "${store%/*}/.in.XXXXXX")" || exit 1
+    if cat ${files[@]+"${files[@]}"} > "$tmp" && [ -s "$tmp" ]; then
+        chmod 600 "$tmp" && mv -f "$tmp" "$store" && exit 0
+    fi
+    rm -f "$tmp"
+    exit 1
+fi
+echo "xclip: not installed (clipimg shim only holds the clipboard image/png)" >&2
+exit 127

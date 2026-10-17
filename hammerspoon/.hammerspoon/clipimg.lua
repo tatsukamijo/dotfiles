@@ -48,15 +48,22 @@ function M.paste()
   local host, err = frontHost()
   if not host then notify("skip", err); return end
   local alias = M.hosts[host]
+  -- A host whose ~/.ssh/config sets its own ControlPath (e.g. torch: Entra
+  -- device-code login, impossible under BatchMode) must reuse that master, so
+  -- the private clipimg socket is only added for hosts without one.
   local script = string.format(
-    [[set -o pipefail; %s - | ssh -o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ForwardX11=no -o ForwardX11Trusted=no -o ControlMaster=auto -o ControlPath=$HOME/.ssh/cm-clipimg-%%r@%%h:%%p -o ControlPersist=60 %s 'PATH=$HOME/.pixi/bin:$HOME/.local/bin:$PATH $HOME/.local/bin/clipimg-recv']],
-    PNGPASTE, alias
+    [[set -o pipefail
+mux=(-o ControlMaster=auto -o "ControlPath=$HOME/.ssh/cm-clipimg-%%r@%%h:%%p" -o ControlPersist=60)
+ssh -G %s 2>/dev/null | grep -q '^controlpath ' && mux=()
+%s - | ssh -o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ForwardX11=no -o ForwardX11Trusted=no "${mux[@]}" %s 'PATH=$HOME/.pixi/bin:$HOME/.local/bin:$PATH $HOME/.local/bin/clipimg-recv']],
+    alias, PNGPASTE, alias
   )
   local task = hs.task.new("/bin/bash", function(exitCode, stdOut, stdErr)
     if exitCode == 0 then
       notify("→ "..host)
     else
       local msg = (stdErr ~= nil and stdErr ~= "") and stdErr or stdOut
+      if exitCode == 255 then msg = msg.."(no live SSH session? run `ssh "..alias.."` once)" end
       notify("fail rc="..tostring(exitCode), msg)
     end
   end, { "-lc", script })

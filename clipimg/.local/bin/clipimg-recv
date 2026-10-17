@@ -1,17 +1,45 @@
 #!/usr/bin/env bash
-# Receive a PNG image on stdin and put it onto the X clipboard.
+# Receive a PNG image on stdin: always save it as the file-backed clipboard
+# (~/.cache/clipimg/clipboard.png, read by the `xclip` shim next to this script
+# on hosts with no X display, e.g. HPC login nodes), then also put it onto the
+# X clipboard when a real xclip and display are available.
 # DISPLAY is read from $DISPLAY, then ~/.cache/current-display (written by
 # bashrc each prompt — accommodates virtual_desktop_docker reassigning :N),
 # then falls back to :0.
 set -euo pipefail
 
+store_dir="$HOME/.cache/clipimg"
+store="$store_dir/clipboard.png"
+mkdir -p "$store_dir"
+tmp="$(mktemp "$store_dir/.recv.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
+cat > "$tmp"
+if [ ! -s "$tmp" ]; then
+    echo "clipimg-recv: empty input" >&2
+    exit 1
+fi
+chmod 600 "$tmp"
+mv -f "$tmp" "$store"  # atomic: readers never see a half-written image
+
+# Real xclip only — skip the shim (same directory, resolved through symlinks).
+self_dir="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+real=""
+IFS=: read -ra dirs <<< "$PATH"
+for d in "${dirs[@]}"; do
+    [ -x "$d/xclip" ] || continue
+    [ "$(cd "$(dirname "$(readlink -f "$d/xclip")")" && pwd)" = "$self_dir" ] && continue
+    real="$d/xclip"; break
+done
+if [ -z "$real" ]; then
+    echo "clipimg-recv: saved $store (no xclip; file clipboard only)"
+    exit 0
+fi
+
 disp="${DISPLAY:-}"
 [ -z "$disp" ] && [ -r "$HOME/.cache/current-display" ] && disp="$(cat "$HOME/.cache/current-display")"
 disp="${disp:-:0}"
 
-if ! command -v xclip >/dev/null 2>&1; then
-    echo "clipimg-recv: xclip not found in PATH" >&2
-    exit 127
+if ! DISPLAY="$disp" "$real" -selection clipboard -t image/png -i < "$store"; then
+    echo "clipimg-recv: saved $store, but xclip failed on $disp" >&2
+    exit 0
 fi
-
-DISPLAY="$disp" xclip -selection clipboard -t image/png -i
