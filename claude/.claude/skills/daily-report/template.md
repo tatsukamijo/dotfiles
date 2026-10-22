@@ -2,104 +2,97 @@
 
 **{{PROJECT}}**  ·  `{{BRANCH}}`
 
-**TL;DR** — one- to two-line abstract of the day's outcome
+**🎯 TL;DR** — one sentence: the day's verdict (the single most important result, and whether the plan is on track).
 
 ---
 
-<!-- 記入ガイド:
-     ・🔬 Research / 🛠️ Engineering の2トラックに分割するのは5セクションのみ
-       （Objective・Progress・Findings・Issues/Blockers・Next）。両ラベル必須。
-       🔬 Research    = 仮説・実験設計・結果とその解釈・科学的結論・手法上の判断。
-       🛠️ Engineering = コード・基盤・ツール・設定・パイプライン・ビルド/デプロイ・バグ修正。
-     ・Hypotheses (Active/Archived)・Decisions・Yesterday's Next・Reproducibility は R/E 分割せず
-       単一のテーブル/チェックリスト/リスト。空なら N/A（Reproducibility は None）。
-     ・2階層の箇条書き: top-level bullet = その topic の結論を端的に1行（カテゴリ名で
-       はなく takeaway そのもの）、その下に sub-bullet で根拠・詳細を1行ずつ。
-       フラットな羅列にしない。結論が1行で完結するなら sub-bullet 無しでよい。
-     ・TL;DR は header の1行（最大2行）。Findings から最後に蒸留して書く。
-     ・Findings の top-level bullet 先頭に確信度 [confirmed]/[preliminary]/[refuted-prior]。
-     ・数値・条件比較は Findings の sub-bullet へ（run名・条件を明記）。文中に散らさない。
-       事前設定の閾値があった run は、その達成可否(pass/fail)も sub-bullet に書く。
-     ・Hypotheses の status flip (どの方向でも) は対応する Findings bullet を必ず持つ。
-       連続3日以上動かず status が open でない行は Archived テーブルに移す。
-     ・thread tag は project の `.claude/daily-report-threads.txt` に列挙された短い識別子
-       （例: #excite-data）。Hypotheses は thread 列で分類。Findings/Issues/Next の top-level
-       bullet 末尾にも任意で `#thread-name` を付けられる。
-     ・Yesterday's Next で連続2日以上 `[ ]` のまま carry された項目は `(carry × N — 理由)` を
-       強制。N ≥ 3 は Issues/Blockers にも同期掲載。
-     ・該当が無いトラックは "None"。pad しない。
-     ・解析画像は専用セクションを作らず、該当する sub-bullet の下にネスト挿入される
-       （worker が anchor 指定 → notion-upload-images.sh）。 -->
+<!-- Writing guide (the worker prompt in SKILL.md is the authority; this is the shape):
+     ・Coarse-to-fine, like descending a ladder: big picture → recap → results → in progress →
+       what to discuss → next action. A reader who stops after any section still has the
+       most important things above it. Never open with a detail.
+     ・Main body = everything above "## 📎 Appendix": at most 700 tokens by `wc -w`, counted
+       without the 📹 / ![] media lines (they never count and are never dropped). The per-section
+       and per-line budgets are in SKILL.md's "Word budget" (the single source of truth). The
+       appendix holds the bookkeeping (run roster, hypotheses, decisions, carry-over) and is
+       collapsed in Notion.
+     ・Results: ≤ 5 claims. Each claim = one line with the takeaway (not a category name),
+       a leading [confirmed]/[preliminary]/[refuted-prior] tag, then ≤ 3 evidence sub-bullets
+       (run · condition · number, ≤ 15 words each), then its video / figure line.
+     ・Want to discuss: ≤ 3 questions, most important first, each with the materials (what was
+       tried, what the data says, candidate answers) so the discussion can start immediately.
+     ・Next action: 2–3 options, each with pros and cons, then ONE proposal with its reason —
+       phrased as a proposal to the advisor, not a to-do list.
+     ・Plain language. Name runs by what they are (agent, mode, task, condition), never by
+       internal ids or bare tags. Numbers live in evidence sub-bullets and the roster only.
+     ・No Research / Engineering split. Engineering work goes to the appendix unless it is
+       the day's result. -->
 
-## 🎯 Objective
+## 🗺️ Big picture
 
-**🔬 Research**
-- conclusion
-  - detail
-**🛠️ Engineering**
-- conclusion
-  - detail
+- **Problem → key idea**: this project tries to solve <problem> with <key idea>.
+- **What "it works" looks like**: <the result that would show the idea is effective — the simplest solved case>.
+- **Why this way** (optional): <why the obvious alternative is not enough>.
 
-## 🚀 Progress
+## 🔁 Since last time
 
-**🔬 Research**
-- conclusion
-  - detail
-**🛠️ Engineering**
-- conclusion
-  - detail
+- Last report (<date>) ended with: <one line>.
+- Planned then: <one line> → what happened: <done / partial / dropped, one line>.
 
-## 🔍 Findings
+## ✅ Results
 
-**🔬 Research**
-- [confirmed | preliminary | refuted-prior] conclusion
-  - detail
-**🛠️ Engineering**
-- [confirmed | preliminary | refuted-prior] conclusion
-  - detail
+- [confirmed | preliminary | refuted-prior] <claim: the takeaway in one phrase>
+  - <evidence: run · condition · number>
+  - <evidence>
+  📹 [<what to conclude from the video>](<absolute video path>)
+  ![<what to conclude from the figure>](<absolute image path>)
 
-## 🧠 Hypotheses — Active
+## 🔄 In progress
+
+- <idea being tested> — plan: <how it will be validated> — so far: <quick result, or "no data yet">
+
+## 🙋 Want to discuss
+
+- **<question, one line>**
+  - tried: <what was tried>
+  - data: <what the data says>
+  - candidates: <candidate answers / options>
+
+## ⏭️ Next action
+
+- **Option 1 — <name>**: <what> — pros: <…> — cons: <…>
+- **Option 2 — <name>**: <what> — pros: <…> — cons: <…>
+- **Proposal**: start with option <k> because <reason>; option <j> if <condition>.
+
+## 📎 Appendix
+
+### 📌 Runs
+
+- <run label> — <agent · mode · task · condition> · seed `<n>` · commit `<sha>` · out `<path>` · <outcome>
+
+### 🛠️ Engineering changes
+
+- <what changed and why> (one bullet per theme)
+
+### 🧠 Hypotheses — Active
 
 | hypothesis | thread | status | evidence |
 |---|---|---|---|
 | hypothesis | #thread-tag | open / supported / refuted | run/finding (YYYY-MM-DD last touched) |
 
-## 🧠 Hypotheses — Archived
+### 🧠 Hypotheses — Archived
 
 | hypothesis | thread | status | evidence |
 |---|---|---|---|
 | resolved hypothesis | #thread-tag | supported / refuted | run/finding (YYYY-MM-DD last touched) |
 
-## 🚧 Issues / Blockers
-
-**🔬 Research**
-- conclusion
-  - detail
-**🛠️ Engineering**
-- conclusion
-  - detail
-
-## 🧭 Decisions
+### 🧭 Decisions
 
 | decision | alternatives | rationale |
 |---|---|---|
 |  |  |  |
 
-## 🔄 Yesterday's Next
+### 🔄 Carry-over
 
-- [x] prior item — done (where closed)
-- [~] prior item — partial (what remains)
-- [ ] prior item — carried over
-
-## ⏭️ Next
-
-**🔬 Research**
-- conclusion
-  - detail
-**🛠️ Engineering**
-- conclusion
-  - detail
-
-## 📌 Reproducibility
-
-- <run label> — commit `<sha>` · ckpt `<path>` · seed `<n>` · ds `<version>` · pueue `<id>`
+- [x] prior Next item — done (where closed)
+- [~] prior Next item — partial (what remains)
+- [ ] prior Next item — carried (carry × N — reason)
