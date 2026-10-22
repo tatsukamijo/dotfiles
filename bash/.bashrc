@@ -6,6 +6,15 @@ case $- in
       *) return;;
 esac
 
+# tmux socket in the per-user runtime dir, not /tmp: on shared login nodes
+# (NYU Torch) something prunes /tmp, the server's socket vanishes, and the
+# still-running sessions become unreachable. /run/user/$UID is private and,
+# with `loginctl enable-linger`, outlives logout. Lost a socket anyway?
+# `kill -USR1 <tmux server pid>` makes the server recreate it.
+if [ -n "$XDG_RUNTIME_DIR" ] && [ -d "$XDG_RUNTIME_DIR" ] && [ -w "$XDG_RUNTIME_DIR" ]; then
+    export TMUX_TMPDIR="$XDG_RUNTIME_DIR"
+fi
+
 # ============================================================
 # Login node protection
 #
@@ -23,12 +32,17 @@ if [[ "$(hostname)" == *login* ]]; then
 
     # --- Tier 1: cgroup hard cap (re-exec interactive shell) ---
     # CPUQuota=400% = max 4 cores; MemoryMax=48G hard ceiling.
+    # OOMPolicy=continue: when the OOM killer takes one process, the rest of the
+    # scope (tmux, editors) survives; systemd's default (stop) kills them all.
+    # tmux survives logout only with `loginctl enable-linger` (the scope belongs
+    # to the per-user systemd, which otherwise exits with the last session).
     # Prevents accidental login-node overload (rogue parallel compiles,
     # pip building wheels with cc1plus x N, etc.). Child processes inherit.
     if [ -z "$CGROUP_CAPPED" ] && [ -z "$NO_CAP" ] \
        && [ -z "$BASH_EXECUTION_STRING" ] \
        && command -v systemd-run >/dev/null 2>&1 \
-       && systemctl --user is-system-running &>/dev/null; then
+       && case "$(systemctl --user is-system-running 2>/dev/null)" in
+              running|degraded) true ;; *) false ;; esac; then  # degraded = a unit failed (e.g. OOM)
         export CGROUP_CAPPED=1
         shopt -q login_shell && _lflag=-l || _lflag=-i
         exec systemd-run --user --scope --quiet \
@@ -36,6 +50,7 @@ if [[ "$(hostname)" == *login* ]]; then
             -p CPUQuota=400% \
             -p MemoryHigh=24G \
             -p MemoryMax=48G \
+            -p OOMPolicy=continue \
             -p TasksMax=4096 \
             bash $_lflag
     fi
@@ -623,3 +638,10 @@ clipimg() {
 
 # Load local overrides
 [ -f ~/.bashrc.local ] && . ~/.bashrc.local
+
+# NYU Torch: $HOME has a 30k-file quota — keep caches/tmp on scratch
+if [ -d "/scratch/$USER" ]; then
+    export PIXI_CACHE_DIR=/scratch/$USER/cache/rattler
+    export XDG_CACHE_HOME=/scratch/$USER/cache
+    export CLAUDE_CODE_TMPDIR=/scratch/$USER/claude_tmp
+fi
