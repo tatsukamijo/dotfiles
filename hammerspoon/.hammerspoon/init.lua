@@ -1,4 +1,5 @@
 require("clipimg")
+require("dia_focus").start()
 
 local kittyWasActive = false
 

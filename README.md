@@ -11,7 +11,7 @@ The installer detects the OS and stows only the relevant packages.
 | Scope | Packages |
 |-------|----------|
 | **Shared** (both OSes) | `claude`, `nvim`, `tmux`, `miyabi` |
-| **macOS only** | `zsh`, `skhd`, `yabai`, `hammerspoon`, `starship`, `torch` |
+| **macOS only** | `zsh`, `skhd`, `yabai`, `hammerspoon`, `karabiner`, `starship`, `torch` |
 | **Linux only** | `bash`, `pueue`, `clipimg` |
 
 Not stowed: `.submodules/` (git submodules), `docs/`, `.archive/`.
@@ -118,6 +118,32 @@ After three PINs it leaves the next one to you. Whole login is ~10-15s. The zsh 
 everything after that reuses the 8h `ControlPersist` connection. Password/MFA or
 an unexpected page brings Arc to the front; you can always finish by hand and
 press ENTER. Debug: `TORCH_AUTH_DEBUG=1 torch-auth torch`.
+
+### ⌨️ Dia: Ctrl+J/K and Vimium Page Focus (macOS)
+
+[Dia](https://www.diabrowser.com/)'s command bar ignores Ctrl+J/K, and after a
+navigation or tab switch keyboard focus stays in Dia's UI, so Vimium's `j`/`k`
+do nothing until you click the page.
+
+- **Ctrl+J / Ctrl+K → Down / Up** (Karabiner rule, Dia only). Trade-off: Ctrl+K
+  (kill line) in web text fields becomes Up too.
+- **Ctrl+;** clicks inside the page to focus it (Hammerspoon `dia_focus.lua`).
+  Only active while Dia is frontmost — Ctrl+; elsewhere (e.g. nvim) is untouched.
+- **Ctrl+Tab / Ctrl+Shift+Tab** still switch tabs natively in Dia, then focus the
+  page after 0.15 s (`SWITCH_DELAY`; raise it if heavy pages aren't ready).
+
+The click lands near the bottom-right of the page's web area (located via the
+Accessibility API, so Dia's chat sidebar is skipped) and the mouse jumps back.
+Tweak the offsets in `dia_focus.lua` if it hits a link on some site.
+
+Requirements:
+
+1. Karabiner-Elements and Hammerspoon installed; Hammerspoon has Accessibility
+   permission (System Settings → Privacy & Security → Accessibility).
+2. After `./install.sh`, enable the rule once: Karabiner-Elements → Complex
+   Modifications → Add predefined rule → *Dia: Ctrl+J/K to Down/Up*. (Only the
+   rule asset is tracked — Karabiner rewrites `karabiner.json`, so it stays local.)
+3. In Vimium options, enable *Don't let pages steal the focus on load*.
 
 ### 🔐 miyabi: Auto-TOTP SSH/SCP/rsync Login (Linux + macOS)
 

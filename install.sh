@@ -20,8 +20,8 @@
 #
 # Single-branch / cross-platform: this repo holds macOS and Linux configs side
 # by side. The OS is detected here and only the relevant stow packages are
-# linked — bash vs zsh, and the macOS-only tools (skhd/yabai/hammerspoon), must
-# never land on the wrong OS.
+# linked — bash vs zsh, and the macOS-only tools (skhd/yabai/hammerspoon/
+# karabiner), must never land on the wrong OS.
 
 set -u
 
@@ -38,7 +38,7 @@ esac
 # Stow packages: shared set + an OS-specific set. Deliberately NOT every dir.
 COMMON_PKGS=(claude nvim tmux miyabi)
 case "$OS_KIND" in
-  macos) OS_PKGS=(zsh skhd yabai hammerspoon starship borders torch) ;;
+  macos) OS_PKGS=(zsh skhd yabai hammerspoon karabiner starship borders torch) ;;
   linux) OS_PKGS=(bash pueue clipimg) ;;
   *)     OS_PKGS=() ;;
 esac
@@ -217,6 +217,8 @@ backup_existing_targets() {
     backup_if_real "$HOME/.config/borders"
     backup_if_real "$HOME/.config/starship.toml"
     backup_if_real "$HOME/.hammerspoon"
+    # Leaf file only: Karabiner-Elements owns (and rewrites) karabiner.json
+    backup_if_real "$HOME/.config/karabiner/assets/complex_modifications/dia.json"
     backup_if_real "$HOME/.local/bin/torch-auth"
   fi
 }
