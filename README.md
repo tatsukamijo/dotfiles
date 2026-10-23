@@ -127,14 +127,16 @@ do nothing until you click the page.
 
 - **Ctrl+J / Ctrl+K → Down / Up** (Karabiner rule, Dia only). Trade-off: Ctrl+K
   (kill line) in web text fields becomes Up too.
-- **Ctrl+;** clicks inside the page to focus it (Hammerspoon `dia_focus.lua`).
-  Only active while Dia is frontmost — Ctrl+; elsewhere (e.g. nvim) is untouched.
-- **Ctrl+Tab / Ctrl+Shift+Tab** still switch tabs natively in Dia, then focus the
-  page after 0.15 s (`SWITCH_DELAY`; raise it if heavy pages aren't ready).
+- **Ctrl+;** focuses the page (Hammerspoon `dia_focus.lua`). Only active while
+  Dia is frontmost — Ctrl+; elsewhere (e.g. nvim) is untouched.
+- **Ctrl+Tab / Ctrl+Shift+Tab** still switch tabs natively in Dia (the switcher
+  overlay stays up while Ctrl is held); the page is focused on Ctrl release.
+- **Enter in the command bar** focuses the newly opened page once the bar closes.
 
-The click lands near the bottom-right of the page's web area (located via the
-Accessibility API, so Dia's chat sidebar is skipped) and the mouse jumps back.
-Tweak the offsets in `dia_focus.lua` if it hits a link on some site.
+Focus goes to the page's web area via the Accessibility API (so no click lands
+on page content, and Dia's chat sidebar is skipped). If that doesn't take after a
+few tries — e.g. a page still loading — it falls back to a click on the page's
+left margin and the mouse jumps back. Timings live at the top of `dia_focus.lua`.
 
 Requirements:
 
