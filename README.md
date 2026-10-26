@@ -115,8 +115,9 @@ for "You have signed in", then presses ENTER 1.5s later (`TORCH_AUTH_ENTER_DELAY
 =`1.5,4,12`: if the server answers with a fresh PIN, the next one waits longer).
 After three PINs it leaves the next one to you. Whole login is ~10-15s. The zsh `ssh`/`scp`/`sftp`/
 `rsync` wrappers call it for `torch`/`torch-any` when no master is alive, so
-everything after that reuses the 8h `ControlPersist` connection. Password/MFA or
-an unexpected page brings Arc to the front; you can always finish by hand and
+everything after that reuses the 8h `ControlPersist` connection. It all runs in a
+background Arc tab (your front app stays in front, even when the tab closes);
+only password/MFA or an unexpected page brings Arc to the front; you can always finish by hand and
 press ENTER. Debug: `TORCH_AUTH_DEBUG=1 torch-auth torch`.
 
 ### ⌨️ Dia: Ctrl+J/K and Vimium Page Focus (macOS)

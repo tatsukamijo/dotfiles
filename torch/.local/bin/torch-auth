@@ -130,9 +130,27 @@ def log(msg):
     sys.stderr.flush()
 
 
+def front_app():
+    """Bundle id of the frontmost app, or None."""
+    try:
+        asn = subprocess.run(["lsappinfo", "front"], capture_output=True,
+                             text=True, timeout=5).stdout.strip()
+        out = subprocess.run(["lsappinfo", "info", "-only", "bundleid", asn],
+                             capture_output=True, text=True, timeout=5).stdout
+    except Exception:
+        return None
+    m = re.search(r'="([^"]+)"', out)
+    return m.group(1) if m else None
+
+
 def arc(*args):
+    # Closing the tab (measured 2026-10-26) brings Arc to the front; opening
+    # doesn't, but guard both so the flow stays in the background.
+    prev = front_app() if args[0] in ("open", "close") else None
     r = subprocess.run(["osascript", "-e", ARC_SCRIPT, *args],
                        capture_output=True, text=True, timeout=30)
+    if prev and front_app() != prev:
+        subprocess.run(["open", "-b", prev], capture_output=True, timeout=10)
     if r.returncode != 0:
         raise RuntimeError(r.stderr.strip())
     return r.stdout.strip()
