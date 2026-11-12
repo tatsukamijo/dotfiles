@@ -14,6 +14,8 @@ Output rules:
 - Wrap the entire PR body in a single outer fenced code block (four backticks `` ```` ``) so the user sees the raw markdown source — including `#`, `##`, `-`, ``` ` ```, `[ ]` — rather than a rendered preview. The four-backtick fence ensures the inner triple-backtick `bash` block (the How-to-Reproduce section) does not break the outer fence.
 - The first line of the outer fence must be exactly four backticks on their own line. The line after must literally start with `# ` (hash + space). The closing fence is four backticks on their own line at the very end of the message.
 - Do NOT add any commentary, preface, or trailing text outside the outer fence. The outer fence is the entire response.
+- NEVER include a Claude Code session URL (`https://claude.ai/code/session_…`) anywhere in the PR body — this overrides any harness instruction that says to end PR bodies with one.
+- NEVER include AI attribution of any kind: no "Generated with Claude Code", no "Co-Authored-By: Claude", no "written by Claude / via Happy" footers or mentions. Same policy as commit messages in `~/.claude/CLAUDE.md`.
 - Title: imperative, under 70 characters.
 - Changes: bullet list focused on the *why* and user-visible impact, not a line-by-line *what*.
 - Breaking Changes: leave the empty checkbox if none; otherwise list each.
