@@ -165,7 +165,7 @@ alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
 alias cls='clear'
-alias open='xdg-open'
+# open(): a function, defined with the other DISPLAY-aware helpers below.
 
 # Directory navigation
 alias ..='cd ..'
@@ -646,6 +646,88 @@ clipimg() {
         rm -f "$out"
         return 1
     fi
+}
+
+# `open FILE|URL` — xdg-open, but with an X display resolved first.
+# A shell started by `vdd` / rdp-ssh gets `DISPLAY=:N` exported; a plain
+# `ssh <host>` shell does not, and xdg-open still exits 0 while the viewer dies
+# on stderr with "cannot open display" — so `open fig.png` looks like it did
+# nothing. Candidates, first live one wins:
+#   $DISPLAY → $VDD_SESSION's container → a desktop-* container named after
+#   $USER → ~/.cache/current-display (last display a shell of ours saw)
+# Liveness is checked, so a stale entry left by a stopped container does not
+# swallow the window. An unrelated desktop-* container is never picked: that
+# would throw the window onto someone else's noVNC session. Pin the desktop in
+# ~/.bashrc.local when it is not named after the remote account
+# (vdd names it desktop-$USER of the *Mac*, e.g. `export VDD_SESSION=desktop-tatsuya`).
+# Viewers are detached; their stderr goes to ~/.cache/open.log.
+#   open fig.png          auto-resolve
+#   open -d :3 fig.png    force a display
+_x_display_live() {
+    local n="${1#:}"; n="${n%%.*}"
+    [ -S "/tmp/.X11-unix/X$n" ] || return 1
+    command -v xdpyinfo >/dev/null 2>&1 || return 0
+    if command -v timeout >/dev/null 2>&1; then
+        DISPLAY=":$n" timeout 3 xdpyinfo >/dev/null 2>&1
+    else
+        DISPLAY=":$n" xdpyinfo >/dev/null 2>&1
+    fi
+}
+
+_x_container_display() {
+    command -v docker >/dev/null 2>&1 || return 1
+    docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+        | sed -n 's/^DISPLAY=//p' | head -n 1
+}
+
+# Echoes the display, plus a tab and the container name when one was matched.
+_x_display() {
+    local name disp
+    if [ -n "$DISPLAY" ] && _x_display_live "$DISPLAY"; then
+        printf '%s' "$DISPLAY"; return 0
+    fi
+    for name in ${VDD_SESSION:-} $(docker ps --filter name=desktop- --format '{{.Names}}' 2>/dev/null | grep -F "$USER"); do
+        disp=$(_x_container_display "$name")
+        [ -n "$disp" ] && _x_display_live "$disp" && { printf '%s\t%s' "$disp" "$name"; return 0; }
+    done
+    if [ -r "$HOME/.cache/current-display" ]; then
+        disp=$(cat "$HOME/.cache/current-display")
+        [ -n "$disp" ] && _x_display_live "$disp" && { printf '%s' "$disp"; return 0; }
+    fi
+    return 1
+}
+
+open() {
+    local disp="" via="" found f running
+    [ "$1" = "-d" ] && { disp="$2"; shift 2; }
+    [ $# -gt 0 ] || { echo "usage: open [-d :N] FILE|URL..." >&2; return 2; }
+
+    for f in "$@"; do
+        case "$f" in
+            *://*) ;;  # URL: xdg-open routes it by scheme
+            *) [ -e "$f" ] || { echo "open: no such file: $f" >&2; return 1; } ;;
+        esac
+    done
+
+    mkdir -p "$HOME/.cache"
+    if [ -z "$disp" ]; then
+        if ! found=$(_x_display); then
+            echo "open: no live X display." >&2
+            echo "  start one from the Mac:  vdd $(hostname -s)" >&2
+            running=$(docker ps --filter name=desktop- --format '{{.Names}}' 2>/dev/null | paste -sd' ' -)
+            [ -n "$running" ] && echo "  desktops here:           $running  (pin with VDD_SESSION=<name>)" >&2
+            echo "  or force one:            open -d :N $1" >&2
+            return 1
+        fi
+        disp=${found%%$'\t'*}
+        via=${found#*$'\t'}; [ "$via" = "$disp" ] && via=""
+        [ "$disp" != "$DISPLAY" ] &&
+            echo "open: -> $disp${via:+ ($via)}  (export DISPLAY=$disp to make it stick)"
+        printf '%s' "$disp" > "$HOME/.cache/current-display"
+    fi
+
+    DISPLAY="$disp" setsid xdg-open "$@" </dev/null >/dev/null 2>>"$HOME/.cache/open.log" &
+    disown 2>/dev/null
 }
 
 # Load local overrides
