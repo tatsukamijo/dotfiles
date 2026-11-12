@@ -35,8 +35,10 @@
   "alwaysThinkingEnabled": true,
   "effortLevel": "xhigh",
   "ultracode": true,
+  "advisorModel": "fable",
   "skipWorkflowUsageWarning": true,
   "theme": "dark-ansi",
+  "switchModelsOnFlag": false,
   "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true
 }
