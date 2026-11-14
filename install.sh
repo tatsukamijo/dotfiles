@@ -244,15 +244,23 @@ addon_paths() {
 
 ensure_addons() {
   [ -d "$DOTFILES_DIR/.git" ] || return 0
-  local p
+  local p sshcmd
+  # BatchMode / no prompt: no access must fail fast, not ask for a password. Built
+  # on the user's own ssh command so a key picked via core.sshCommand still works.
+  sshcmd="${GIT_SSH_COMMAND:-$(git -C "$DOTFILES_DIR" config --get core.sshCommand || echo ssh)}"
   while IFS= read -r p; do
     [ -n "$p" ] || continue
-    # BatchMode / no prompt: no access must fail fast, not ask for a password
-    if GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes" \
+    # Already cloned: leave it alone (it may be developed in place, past the
+    # commit dotfiles records; a checkout would silently roll it back).
+    if [ -e "$DOTFILES_DIR/$p/.git" ]; then
+      skip "add-on $p already checked out"
+      continue
+    fi
+    if GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="$sshcmd -o BatchMode=yes" \
        git -C "$DOTFILES_DIR" submodule update --init --checkout -- "$p" >/dev/null 2>&1; then
       ok "add-on $p checked out"
     else
-      skip "add-on $p not available (no access?); skipping"
+      skip "add-on $p not available (no access, or your GitHub ssh key needs an agent/passphrase); skipping"
     fi
   done < <(addon_paths)
 }
@@ -285,10 +293,11 @@ run_stow() {
       continue
     fi
     # -R: restow (rebuild symlinks for this package, idempotent)
-    if stow -R -t "$HOME" "$pkg" 2>/tmp/stow-${pkg}.err; then
-      ok "stow $pkg"
+    local errf; errf="$(mktemp "${TMPDIR:-/tmp}/stow-${pkg}.XXXXXX")" || errf=/dev/null
+    if stow -R -t "$HOME" "$pkg" 2>"$errf"; then
+      ok "stow $pkg"; [ "$errf" = /dev/null ] || rm -f "$errf"
     else
-      warn "stow $pkg had conflicts; see /tmp/stow-${pkg}.err and resolve manually"
+      warn "stow $pkg had conflicts; see $errf and resolve manually"
     fi
   done
 }
@@ -308,10 +317,11 @@ run_unstow() {
   fi
   for pkg in "${STOW_PKGS[@]}"; do
     [ -d "$pkg" ] || continue
-    if stow -D -t "$HOME" "$pkg" 2>/tmp/unstow-${pkg}.err; then
-      ok "unstow $pkg"
+    local errf; errf="$(mktemp "${TMPDIR:-/tmp}/unstow-${pkg}.XXXXXX")" || errf=/dev/null
+    if stow -D -t "$HOME" "$pkg" 2>"$errf"; then
+      ok "unstow $pkg"; [ "$errf" = /dev/null ] || rm -f "$errf"
     else
-      warn "unstow $pkg had issues; see /tmp/unstow-${pkg}.err"
+      warn "unstow $pkg had issues; see $errf"
     fi
   done
 }
