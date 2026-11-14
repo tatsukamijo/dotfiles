@@ -4,3 +4,7 @@
 [submodule ".submodules/virtual_desktop_docker"]
 	path = .submodules/virtual_desktop_docker
 	url = git@github.com:matsuolab/virtual_desktop_docker.git
+[submodule ".submodules/torch-tools"]
+	path = .submodules/torch-tools
+	url = git@github.com:tatsukamijo/torch-tools.git
+	update = none

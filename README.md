@@ -11,7 +11,7 @@ The installer detects the OS and stows only the relevant packages.
 | Scope | Packages |
 |-------|----------|
 | **Shared** (both OSes) | `claude`, `nvim`, `tmux`, `miyabi` |
-| **macOS only** | `zsh`, `skhd`, `yabai`, `hammerspoon`, `karabiner`, `starship`, `torch` |
+| **macOS only** | `zsh`, `skhd`, `yabai`, `hammerspoon`, `karabiner`, `starship` |
 | **Linux only** | `bash`, `pueue`, `clipimg` |
 
 Not stowed: `.submodules/` (git submodules), `docs/`, `.archive/`.
@@ -105,20 +105,15 @@ tasks complete, with success/failure status and truncated logs.
 - Set `PUEUE_NOTIFY_ONLY_FAILURE=true` to notify only on failures.
 - Reset threads: `rm ~/.local/share/pueue-notify/threads.json`
 
-### 🔐 torch: Auto Entra Device-Code Login (macOS + Arc)
+### 🧩 Optional private add-ons
 
-NYU Torch asks for a Microsoft device-code PIN (`Authenticate with PIN XXXX at
-https://login.microsoft.com/device and press ENTER.`). `torch-auth <host>` opens
-the ssh ControlMaster under a pty, and in a new Arc tab enters the PIN, picks the
-account (`TORCH_ENTRA_ACCOUNT`, default `tk3817@nyu.edu`), clicks Continue, waits
-for "You have signed in", then presses ENTER 1.5s later (`TORCH_AUTH_ENTER_DELAYS`
-=`1.5,4,12`: if the server answers with a fresh PIN, the next one waits longer).
-After three PINs it leaves the next one to you. Whole login is ~10-15s. The zsh `ssh`/`scp`/`sftp`/
-`rsync` wrappers call it for `torch`/`torch-any` when no master is alive, so
-everything after that reuses the 8h `ControlPersist` connection. It all runs in a
-background Arc tab (your front app stays in front, even when the tab closes);
-only password/MFA or an unexpected page brings Arc to the front; you can always finish by hand and
-press ENTER. Debug: `TORCH_AUTH_DEBUG=1 torch-auth torch`.
+A submodule marked `update = none` in `.gitmodules` is an optional add-on, e.g. a
+private repo only some people can clone. `git clone --recursive` and
+`git submodule update --init` skip it; `./install.sh` tries to check it out and,
+if you have access, runs its own `install.sh` (`./install.sh --uninstall` undoes
+it). Without access it is skipped quietly. Add-ons hook in through two generic
+points in `~/.zshrc`: `*.zsh` drop-ins in `~/.zshrc.d/`, and `SSH_PRE_HOOKS`
+(functions run before `ssh`/`scp`/`sftp`/`rsync`).
 
 ### ⌨️ Dia: Ctrl+J/K and Vimium Page Focus (macOS)
 

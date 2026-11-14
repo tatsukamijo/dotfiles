@@ -112,46 +112,48 @@ eval "$(pixi completion --shell zsh)"
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 
 # ----------------------------------------------------------------------------
+# ssh / scp / sftp / rsync wrappers
+#
+# Pre-connect hooks: add-ons (files in ~/.zshrc.d, e.g. from an optional private
+# submodule) append function names to SSH_PRE_HOOKS. Each is called as
+# `hook <ssh|scp|sftp|rsync> <args...>` before the command runs, e.g. to open a
+# ControlMaster for a cluster with an interactive login.
+#
 # miyabi HPC: auto-answer the TOTP "Verification code:" prompt for plain
 # ssh/scp/sftp (see the `miyabi` stow package). Commands whose args reference the
 # miyabi host go through ssh-totp; everything else hits the real binary.
 # ----------------------------------------------------------------------------
-#
-# NYU Torch: Entra device-code login. Before ssh/scp/sftp/rsync to torch, make
-# sure the ControlMaster is up; if not, torch-auth opens it and types the PIN
-# into Arc (see the `torch` stow package). The command itself then runs plain.
-# ----------------------------------------------------------------------------
-_torch_ensure() {
-    [ -x "$HOME/.local/bin/torch-auth" ] || return 0
-    local a h
-    for a in "$@"; do
-        case "$a" in -O*) return 0 ;; esac   # ssh -O check/exit: leave alone
-        h="${a%%:*}"; h="${h##*@}"
-        case "$h" in
-            torch|torch-any) command torch-auth "$h"; return 0 ;;
-        esac
+typeset -ga SSH_PRE_HOOKS
+_ssh_pre() {
+    local h
+    for h in $SSH_PRE_HOOKS; do
+        (( $+functions[$h] )) && "$h" "$@"
     done
+    return 0
 }
-if [ -x "$HOME/.local/bin/ssh-totp" ]; then
-    _miyabi_wrap() {
-        local bin="$1"; shift
-        local a
-        _torch_ensure "$@"
+_net_wrap() {
+    local bin="$1"; shift
+    local a
+    _ssh_pre "$bin" "$@"
+    if [ -x "$HOME/.local/bin/ssh-totp" ]; then
         for a in "$@"; do
             case "$a" in
                 miyabi|miyabi:*|miyabi-g*|*@miyabi*|*miyabi*.jcahpc.jp*)
                     command ssh-totp "$bin" "$@"; return ;;
             esac
         done
-        command "$bin" "$@"
-    }
-    ssh()  { _miyabi_wrap ssh  "$@"; }
-    scp()  { _miyabi_wrap scp  "$@"; }
-    sftp() { _miyabi_wrap sftp "$@"; }
-    # rsync can't use the pty (its protocol needs clean pipes over ssh), so route
-    # miyabi transfers through ssh with an SSH_ASKPASS helper instead.
-    rsync() {
-        local a
+    fi
+    command "$bin" "$@"
+}
+ssh()  { _net_wrap ssh  "$@"; }
+scp()  { _net_wrap scp  "$@"; }
+sftp() { _net_wrap sftp "$@"; }
+# rsync can't use the pty (its protocol needs clean pipes over ssh), so route
+# miyabi transfers through ssh with an SSH_ASKPASS helper instead.
+rsync() {
+    local a
+    _ssh_pre rsync "$@"
+    if [ -x "$HOME/.local/bin/miyabi-askpass" ]; then
         for a in "$@"; do
             case "$a" in
                 miyabi:*|miyabi-g*:*|*@miyabi*:*|*miyabi*.jcahpc.jp:*)
@@ -164,14 +166,15 @@ if [ -x "$HOME/.local/bin/ssh-totp" ]; then
                     return ;;
             esac
         done
-        _torch_ensure "$@"
-        command rsync "$@"
-    }
-fi
+    fi
+    command rsync "$@"
+}
 
 # ----------------------------------------------------------------------------
 # Local Configuration
 # ----------------------------------------------------------------------------
+# Add-ons: *.zsh drop-ins (e.g. stowed by an optional private submodule).
+for _f in ~/.zshrc.d/*.zsh(N); do source "$_f"; done; unset _f
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
 # ============================================================================

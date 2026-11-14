@@ -5,12 +5,14 @@
 #   1. Install pixi (if missing)
 #   2. pixi global install <tools> (idempotent per tool)
 #   3. Install Claude Code (if `claude` not on PATH)
-#   4. git submodule update --init --recursive
+#   4. git submodule update --init --recursive (+ optional private add-ons, if you
+#      have access: submodules marked `update = none` in .gitmodules)
 #   5. Pre-create top-level dirs so stow folds at file-level (~/.claude, ~/.config, ~/.local)
 #   6. Backup any pre-existing real files/dirs that would conflict with stow
 #      (timestamped .bak.<TS>; never overwrites prior backups)
 #   7. Restow the OS-appropriate packages (common + per-OS), surviving partial conflicts
 #   8. Install tpm (if missing)
+#   9. Run each checked-out add-on's own install.sh
 #
 # Run `./install.sh --uninstall` (or `-u`) to `stow -D` the same OS-appropriate
 # set of packages. Other steps (pixi tools, tpm, ...) are left in place.
@@ -38,7 +40,7 @@ esac
 # Stow packages: shared set + an OS-specific set. Deliberately NOT every dir.
 COMMON_PKGS=(claude nvim tmux miyabi)
 case "$OS_KIND" in
-  macos) OS_PKGS=(zsh skhd yabai hammerspoon karabiner starship borders torch) ;;
+  macos) OS_PKGS=(zsh skhd yabai hammerspoon karabiner starship borders) ;;
   linux) OS_PKGS=(bash pueue clipimg) ;;
   *)     OS_PKGS=() ;;
 esac
@@ -219,8 +221,49 @@ backup_existing_targets() {
     backup_if_real "$HOME/.hammerspoon"
     # Leaf file only: Karabiner-Elements owns (and rewrites) karabiner.json
     backup_if_real "$HOME/.config/karabiner/assets/complex_modifications/dia.json"
-    backup_if_real "$HOME/.local/bin/torch-auth"
   fi
+}
+
+#------------------------------------------------------------------------------
+# 4b/9. optional private add-ons
+#
+# A submodule with `update = none` in .gitmodules is an optional add-on (e.g. a
+# private repo only some people can clone). `submodule update --init` skips it;
+# here we try to check it out and, if that works, run its install.sh. No access
+# just means it's skipped, quietly.
+#------------------------------------------------------------------------------
+addon_paths() {
+  [ -f "$DOTFILES_DIR/.gitmodules" ] || return 0
+  git config -f "$DOTFILES_DIR/.gitmodules" --get-regexp '^submodule\..*\.update$' 2>/dev/null |
+    while read -r key val; do
+      [ "$val" = none ] || continue
+      key="${key#submodule.}"
+      git config -f "$DOTFILES_DIR/.gitmodules" --get "submodule.${key%.update}.path"
+    done
+}
+
+ensure_addons() {
+  [ -d "$DOTFILES_DIR/.git" ] || return 0
+  local p
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    # BatchMode / no prompt: no access must fail fast, not ask for a password
+    if GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes" \
+       git -C "$DOTFILES_DIR" submodule update --init --checkout -- "$p" >/dev/null 2>&1; then
+      ok "add-on $p checked out"
+    else
+      skip "add-on $p not available (no access?); skipping"
+    fi
+  done < <(addon_paths)
+}
+
+run_addons() {  # $1: install | uninstall
+  local p
+  while IFS= read -r p; do
+    [ -n "$p" ] && [ -x "$DOTFILES_DIR/$p/install.sh" ] || continue
+    log "Add-on $p: $1"
+    "$DOTFILES_DIR/$p/install.sh" "$1" || warn "add-on $p $1 failed"
+  done < <(addon_paths)
 }
 
 #------------------------------------------------------------------------------
@@ -309,6 +352,7 @@ main() {
   fi
 
   if [ "$action" = uninstall ]; then
+    run_addons uninstall
     run_unstow
     log "Done."
     return 0
@@ -318,11 +362,13 @@ main() {
   ensure_pixi_tools
   ensure_claude_code
   ensure_submodules
+  ensure_addons
   ensure_git_filters
   ensure_real_dirs
   backup_existing_targets
   run_stow
   ensure_tpm
+  run_addons install
 
   log "Done."
   local rc=".bashrc"
